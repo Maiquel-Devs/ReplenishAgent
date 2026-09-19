@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "apps.replenishment",
     "apps.purchasing",
     "apps.web",
+    "apps.agent",
 ]
 
 MIDDLEWARE = [
