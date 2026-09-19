@@ -39,21 +39,6 @@ def _freeze_json(value: Any) -> Any:
 
 
 @dataclass(frozen=True, slots=True)
-class LLMMessage:
-    role: LLMRole | str
-    content: str
-
-    def __post_init__(self) -> None:
-        try:
-            role = LLMRole(self.role)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"Invalid LLM message role: {self.role!r}.") from exc
-        if not isinstance(self.content, str):
-            raise TypeError("Message content must be a string.")
-        object.__setattr__(self, "role", role)
-
-
-@dataclass(frozen=True, slots=True)
 class ToolDefinition:
     name: str
     description: str
@@ -83,6 +68,38 @@ class ToolCall:
         if not isinstance(self.arguments, Mapping):
             raise TypeError("Tool call arguments must be a mapping.")
         object.__setattr__(self, "arguments", _freeze_json(self.arguments))
+
+
+@dataclass(frozen=True, slots=True)
+class LLMMessage:
+    role: LLMRole | str
+    content: str
+    tool_calls: tuple[ToolCall, ...] = ()
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+
+    def __post_init__(self) -> None:
+        try:
+            role = LLMRole(self.role)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid LLM message role: {self.role!r}.") from exc
+        if not isinstance(self.content, str):
+            raise TypeError("Message content must be a string.")
+        calls = tuple(self.tool_calls)
+        if any(not isinstance(call, ToolCall) for call in calls):
+            raise TypeError("Message tool_calls must contain only ToolCall objects.")
+        if calls and role is not LLMRole.ASSISTANT:
+            raise ValueError("Only assistant messages may contain tool calls.")
+        for field_name, value in (
+            ("tool_call_id", self.tool_call_id),
+            ("tool_name", self.tool_name),
+        ):
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{field_name} must be a non-empty string or None.")
+            if value is not None and role is not LLMRole.TOOL:
+                raise ValueError(f"{field_name} is only valid for tool messages.")
+        object.__setattr__(self, "role", role)
+        object.__setattr__(self, "tool_calls", calls)
 
 
 @dataclass(frozen=True, slots=True)
