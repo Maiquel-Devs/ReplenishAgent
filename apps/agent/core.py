@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+import json
+
+from apps.agent.providers import LLMMessage, LLMProvider, LLMRole
+
+from .tools import ToolExecutionContext, ToolExecutionPolicy, ToolRegistry
+
+
+SYSTEM_PROMPT = """Voce e o ReplenishAgent, um agente de apoio a reposicao de estoque.
+Use as Tools quando precisar de dados reais. Nunca invente estoque, consumo,
+preco, fornecedor ou risco; calculos devem vir das Tools. Propostas de compra
+sao apenas propostas pendentes. Decisoes criticas exigem aprovacao humana."""
+
+
+class AgentError(Exception):
+    """Base exception exposed by the Agent core."""
+
+
+class AgentIterationLimitError(AgentError):
+    """Raised when the provider does not produce a final answer in time."""
+
+
+class ReplenishAgent:
+    def __init__(
+        self,
+        *,
+        provider: LLMProvider,
+        tools: ToolRegistry,
+        policy: ToolExecutionPolicy | None = None,
+        context: ToolExecutionContext | None = None,
+        max_iterations: int = 8,
+        system_prompt: str = SYSTEM_PROMPT,
+    ) -> None:
+        if not isinstance(provider, LLMProvider):
+            raise TypeError("provider must implement LLMProvider.")
+        if not isinstance(tools, ToolRegistry):
+            raise TypeError("tools must be a ToolRegistry.")
+        if (
+            isinstance(max_iterations, bool)
+            or not isinstance(max_iterations, int)
+            or max_iterations <= 0
+        ):
+            raise ValueError("max_iterations must be a positive integer.")
+        if not isinstance(system_prompt, str) or not system_prompt.strip():
+            raise ValueError("system_prompt must be a non-empty string.")
+        self.provider = provider
+        self.tools = tools
+        self.policy = policy or ToolExecutionPolicy()
+        self.context = context or ToolExecutionContext()
+        self.max_iterations = max_iterations
+        self.system_prompt = system_prompt
+
+    def run(self, user_message: str) -> str:
+        if not isinstance(user_message, str) or not user_message.strip():
+            raise ValueError("user_message must be a non-empty string.")
+
+        messages = [
+            LLMMessage(role=LLMRole.SYSTEM, content=self.system_prompt),
+            LLMMessage(role=LLMRole.USER, content=user_message),
+        ]
+        definitions = self.tools.definitions()
+
+        for iteration in range(self.max_iterations):
+            response = self.provider.generate(messages, definitions)
+            if not response.tool_calls:
+                return response.content or ""
+
+            if iteration == self.max_iterations - 1:
+                raise AgentIterationLimitError(
+                    "The Agent reached its maximum number of iterations."
+                )
+
+            messages.append(
+                LLMMessage(
+                    role=LLMRole.ASSISTANT,
+                    content=response.content or "",
+                    tool_calls=response.tool_calls,
+                )
+            )
+            for call in response.tool_calls:
+                result = self.tools.execute(
+                    call,
+                    policy=self.policy,
+                    context=self.context,
+                )
+                messages.append(
+                    LLMMessage(
+                        role=LLMRole.TOOL,
+                        content=json.dumps(
+                            result,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        ),
+                        tool_call_id=call.id,
+                        tool_name=call.name,
+                    )
+                )
+
+        raise AgentIterationLimitError(
+            "The Agent reached its maximum number of iterations."
+        )
