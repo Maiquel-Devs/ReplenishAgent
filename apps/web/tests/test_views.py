@@ -2,6 +2,8 @@ from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.urls import reverse
 
 from apps.inventory.models import Inventory, StockMovement
@@ -18,6 +20,14 @@ from apps.suppliers.models import ProductSupplier, Supplier
 
 from apps.web.templatetags.formatting import brl
 pytestmark = pytest.mark.django_db
+
+@pytest.fixture
+def reviewer():
+    user = get_user_model().objects.create_user(username="web-reviewer")
+    user.user_permissions.add(
+        Permission.objects.get(codename="review_purchaseproposal")
+    )
+    return user
 
 
 @pytest.fixture
@@ -309,34 +319,46 @@ def test_zero_recommendation_cannot_create_proposal(client, supplier):
     assert "greater than zero" in response.content.decode()
 
 
-def test_approve_proposal_requires_post_and_uses_service(client, proposal):
-    assert client.get(reverse("web:proposal_approve", args=[proposal.pk])).status_code == 405
+def test_approve_proposal_requires_human_confirmation(client, proposal, reviewer):
+    client.force_login(reviewer)
+    confirm_url = reverse("web:proposal_approve", args=[proposal.pk])
+
+    confirmation = client.get(confirm_url)
+    proposal.refresh_from_db()
+    assert confirmation.status_code == 200
+    assert proposal.status == PurchaseProposal.Status.PENDING
 
     with patch(
-        "apps.web.views.approve_purchase_proposal",
+        "apps.web.admin_views.approve_purchase_proposal",
         wraps=approve_purchase_proposal,
     ) as service:
-        response = client.post(
-            reverse("web:proposal_approve", args=[proposal.pk]),
-        )
+        response = client.post(confirm_url)
 
     proposal.refresh_from_db()
     assert response.status_code == 302
     assert service.call_count == 1
     assert proposal.status == PurchaseProposal.Status.APPROVED
+    assert proposal.reviewed_by == reviewer
 
 
-def test_reject_proposal_requires_post(client, proposal):
-    assert client.get(reverse("web:proposal_reject", args=[proposal.pk])).status_code == 405
+def test_reject_proposal_requires_human_confirmation(client, proposal, reviewer):
+    client.force_login(reviewer)
+    confirm_url = reverse("web:proposal_reject", args=[proposal.pk])
 
-    response = client.post(reverse("web:proposal_reject", args=[proposal.pk]))
+    assert client.get(confirm_url).status_code == 200
+    proposal.refresh_from_db()
+    assert proposal.status == PurchaseProposal.Status.PENDING
+
+    response = client.post(confirm_url)
 
     proposal.refresh_from_db()
     assert response.status_code == 302
     assert proposal.status == PurchaseProposal.Status.REJECTED
+    assert proposal.reviewed_by == reviewer
 
 
-def test_invalid_decision_is_presented_to_user(client, proposal):
+def test_invalid_decision_is_presented_to_authorized_user(client, proposal, reviewer):
+    client.force_login(reviewer)
     client.post(reverse("web:proposal_approve", args=[proposal.pk]))
 
     response = client.post(
@@ -348,7 +370,6 @@ def test_invalid_decision_is_presented_to_user(client, proposal):
     assert "Only pending proposals can be decided" in response.content.decode()
     proposal.refresh_from_db()
     assert proposal.status == PurchaseProposal.Status.APPROVED
-
 
 def test_brl_formatting_is_presentation_only():
     assert brl(Decimal("4140.00")) == "R$ 4.140,00"

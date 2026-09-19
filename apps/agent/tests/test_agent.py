@@ -7,6 +7,7 @@ from apps.agent.providers import FakeLLMProvider, LLMResponse, ToolCall
 from apps.agent.tools import (
     ExecutableTool,
     ToolDomainError,
+    ToolExecutionContext,
     ToolExecutionPolicy,
     ToolPermission,
     ToolRegistry,
@@ -35,14 +36,19 @@ def make_tool(
     )
 
 
-def run_tool_flow(call, registry, *, policy=None):
+def run_tool_flow(call, registry, *, policy=None, context=None):
     provider = FakeLLMProvider(
         [
             LLMResponse(tool_calls=(call,)),
             LLMResponse(content="Final answer"),
         ]
     )
-    agent = ReplenishAgent(provider=provider, tools=registry, policy=policy)
+    agent = ReplenishAgent(
+        provider=provider,
+        tools=registry,
+        policy=policy,
+        context=context,
+    )
     return agent.run("Question"), provider
 
 
@@ -196,6 +202,11 @@ def test_write_executes_when_backend_policy_allows_it():
         ToolCall(id="write-1", name="lookup", arguments={"value": 1}),
         ToolRegistry([tool]),
         policy=ToolExecutionPolicy(allow_write=True),
+        context=ToolExecutionContext(
+            user_id=1,
+            is_authenticated=True,
+            permissions=frozenset({"agent.execute_agent_write"}),
+        ),
     )
 
     assert executed == [True]
@@ -212,6 +223,11 @@ def test_critical_is_always_blocked_even_when_write_is_allowed():
         ToolCall(id="critical-1", name="lookup", arguments={"value": 1}),
         ToolRegistry([tool]),
         policy=ToolExecutionPolicy(allow_write=True),
+        context=ToolExecutionContext(
+            user_id=1,
+            is_authenticated=True,
+            permissions=frozenset({"agent.execute_agent_write"}),
+        ),
     )
 
     assert executed == []

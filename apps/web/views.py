@@ -288,27 +288,3 @@ def proposal_detail(request: HttpRequest, pk: int) -> HttpResponse:
         pk=pk,
     )
     return render(request, "web/proposal_detail.html", {"proposal": proposal})
-
-
-@require_POST
-def proposal_approve(request: HttpRequest, pk: int) -> HttpResponse:
-    proposal = get_object_or_404(PurchaseProposal, pk=pk)
-    try:
-        approve_purchase_proposal(proposal)
-    except ValidationError as error:
-        messages.error(request, _domain_error_message(error))
-    else:
-        messages.success(request, "Proposta aprovada com sucesso.")
-    return redirect("web:proposal_detail", pk=pk)
-
-
-@require_POST
-def proposal_reject(request: HttpRequest, pk: int) -> HttpResponse:
-    proposal = get_object_or_404(PurchaseProposal, pk=pk)
-    try:
-        reject_purchase_proposal(proposal)
-    except ValidationError as error:
-        messages.error(request, _domain_error_message(error))
-    else:
-        messages.success(request, "Proposta rejeitada com sucesso.")
-    return redirect("web:proposal_detail", pk=pk)

@@ -5,7 +5,11 @@ import pytest
 
 from apps.agent.core import ReplenishAgent
 from apps.agent.providers import FakeLLMProvider, LLMResponse, ToolCall
-from apps.agent.tools import ToolExecutionPolicy, create_default_tool_registry
+from apps.agent.tools import (
+    ToolExecutionContext,
+    ToolExecutionPolicy,
+    create_default_tool_registry,
+)
 from apps.inventory.models import Inventory, StockMovement
 from apps.products.models import Product
 from apps.purchasing.models import PurchaseProposal
@@ -121,6 +125,11 @@ def test_complete_write_enabled_proposal_flow_stays_pending(product_relation):
         provider=provider,
         tools=create_default_tool_registry(),
         policy=ToolExecutionPolicy(allow_write=True),
+        context=ToolExecutionContext(
+            user_id=1,
+            is_authenticated=True,
+            permissions=frozenset({"agent.execute_agent_write"}),
+        ),
     )
 
     answer = agent.run("Prepare uma proposta de compra para esse produto.")

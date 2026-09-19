@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% load formatting %}
+{% block title %}Confirmar decisão | ReplenishAgent{% endblock %}
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-7"><div class="card shadow-sm"><div class="card-body p-4">
+<h1 class="h4">Confirmar decisão</h1>
+<p>Você está prestes a marcar a proposta <strong>#{{ proposal.pk }}</strong> como <strong>{{ action|lower }}</strong>.</p>
+<ul class="list-group mb-4"><li class="list-group-item">Produto: {{ proposal.product.name }}</li><li class="list-group-item">Fornecedor: {{ proposal.supplier.name }}</li><li class="list-group-item">Quantidade: {{ proposal.quantity }}</li><li class="list-group-item">Total: {{ proposal.total_price|brl }}</li><li class="list-group-item">Risco: {{ proposal.risk_level }}</li></ul>
+<form method="post">{% csrf_token %}<button class="btn {% if action == 'Aprovada' %}btn-success{% else %}btn-danger{% endif %}" type="submit">Confirmar {{ action|lower }}</button> <a class="btn btn-outline-secondary" href="{% url 'web:proposal_detail' proposal.pk %}">Cancelar</a></form>
+</div></div></div></div>
+{% endblock %}

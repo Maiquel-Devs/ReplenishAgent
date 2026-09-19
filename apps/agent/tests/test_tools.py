@@ -51,7 +51,15 @@ def execute(registry, name, arguments, *, allow_write=False):
     return registry.execute(
         ToolCall(id="test-call", name=name, arguments=arguments),
         policy=ToolExecutionPolicy(allow_write=allow_write),
-        context=ToolExecutionContext(),
+        context=(
+            ToolExecutionContext(
+                user_id=1,
+                is_authenticated=True,
+                permissions=frozenset({"agent.execute_agent_write"}),
+            )
+            if allow_write
+            else ToolExecutionContext()
+        ),
     )
 
 

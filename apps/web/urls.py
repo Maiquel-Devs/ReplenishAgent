@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import admin_views, views
 
 
 app_name = "web"
@@ -41,13 +41,33 @@ urlpatterns = [
     path("propostas/", views.proposal_list, name="proposal_list"),
     path("propostas/<int:pk>/", views.proposal_detail, name="proposal_detail"),
     path(
-        "propostas/<int:pk>/aprovar/",
-        views.proposal_approve,
+        "administracao/",
+        admin_views.administration_overview,
+        name="administration_overview",
+    ),
+    path(
+        "administracao/propostas/",
+        admin_views.pending_proposals,
+        name="pending_proposals",
+    ),
+    path(
+        "administracao/propostas/<int:pk>/aprovar/",
+        admin_views.proposal_approve,
         name="proposal_approve",
     ),
     path(
-        "propostas/<int:pk>/rejeitar/",
-        views.proposal_reject,
+        "administracao/propostas/<int:pk>/rejeitar/",
+        admin_views.proposal_reject,
         name="proposal_reject",
+    ),
+    path(
+        "administracao/auditoria/",
+        admin_views.agent_audit_list,
+        name="agent_audit_list",
+    ),
+    path(
+        "administracao/auditoria/<uuid:execution_id>/",
+        admin_views.agent_audit_detail,
+        name="agent_audit_detail",
     ),
 ]

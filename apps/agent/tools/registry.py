@@ -9,7 +9,6 @@ from .base import (
     ExecutableTool,
     ToolArgumentsError,
     ToolAuthorizationError,
-
     ToolError,
     ToolExecutionContext,
     ToolExecutionPolicy,
@@ -41,6 +40,12 @@ class ToolRegistry:
         except (KeyError, TypeError) as exc:
             raise ToolNotFoundError(f"Tool {name!r} is not registered.") from exc
 
+    def permission_for(self, name: str) -> ToolPermission | None:
+        try:
+            return self.get(name).permission
+        except ToolNotFoundError:
+            return None
+
     def execute(
         self,
         call: ToolCall,
@@ -53,7 +58,7 @@ class ToolRegistry:
                 raise ToolArgumentsError("A valid ToolCall is required.")
             tool = self.get(call.name)
             arguments = tool.validate_arguments(call.arguments)
-            self._authorize(tool, policy)
+            self._authorize(tool, policy, context)
             data = tool.handler(arguments, context)
             return {"ok": True, "data": json_safe(data)}
         except ToolError as exc:
@@ -74,12 +79,13 @@ class ToolRegistry:
     def _authorize(
         tool: ExecutableTool,
         policy: ToolExecutionPolicy,
+        context: ToolExecutionContext,
     ) -> None:
         if tool.permission is ToolPermission.CRITICAL:
             raise ToolAuthorizationError(
                 "Critical actions require explicit human approval."
             )
-        if not policy.allows(tool.permission):
+        if not policy.allows(tool.permission, context):
             raise ToolAuthorizationError(
                 f"Execution of {tool.permission.value} tools is not allowed."
             )

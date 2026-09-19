@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -75,13 +76,25 @@ def create_purchase_proposal(
     )
 
 
+def _validate_reviewer(reviewed_by):
+    user_model = get_user_model()
+    if (
+        not isinstance(reviewed_by, user_model)
+        or reviewed_by.pk is None
+        or not reviewed_by.is_authenticated
+    ):
+        raise ValidationError({"reviewed_by": "An authenticated reviewer is required."})
+
+
 def _decide_purchase_proposal(
     *,
     proposal: PurchaseProposal,
     status: str,
+    reviewed_by,
 ) -> PurchaseProposal:
     if not isinstance(proposal, PurchaseProposal) or proposal.pk is None:
         raise ValidationError({"proposal": "A persisted proposal is required."})
+    _validate_reviewer(reviewed_by)
 
     with transaction.atomic():
         locked_proposal = PurchaseProposal.objects.select_for_update().get(
@@ -94,25 +107,37 @@ def _decide_purchase_proposal(
 
         locked_proposal.status = status
         locked_proposal.reviewed_at = timezone.now()
+        locked_proposal.reviewed_by = reviewed_by
         locked_proposal.save(
-            update_fields=("status", "reviewed_at", "updated_at"),
+            update_fields=(
+                "status",
+                "reviewed_at",
+                "reviewed_by",
+                "updated_at",
+            ),
         )
         return locked_proposal
 
 
 def approve_purchase_proposal(
     proposal: PurchaseProposal,
+    *,
+    reviewed_by,
 ) -> PurchaseProposal:
     return _decide_purchase_proposal(
         proposal=proposal,
         status=PurchaseProposal.Status.APPROVED,
+        reviewed_by=reviewed_by,
     )
 
 
 def reject_purchase_proposal(
     proposal: PurchaseProposal,
+    *,
+    reviewed_by,
 ) -> PurchaseProposal:
     return _decide_purchase_proposal(
         proposal=proposal,
         status=PurchaseProposal.Status.REJECTED,
+        reviewed_by=reviewed_by,
     )

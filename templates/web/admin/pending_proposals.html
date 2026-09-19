@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% load formatting %}
+{% block title %}Propostas pendentes | ReplenishAgent{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Propostas pendentes</h1>
+<div class="card shadow-sm"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+<thead><tr><th>Produto</th><th>Fornecedor</th><th>Quantidade</th><th>Preço</th><th>Total</th><th>Risco</th><th>Criada em</th><th></th></tr></thead>
+<tbody>{% for proposal in proposals %}<tr><td>{{ proposal.product.name }}<div class="small text-secondary">{{ proposal.product.sku }}</div></td><td>{{ proposal.supplier.name }}</td><td>{{ proposal.quantity }}</td><td>{{ proposal.unit_price|brl }}</td><td>{{ proposal.total_price|brl }}</td><td>{{ proposal.risk_level }}</td><td>{{ proposal.created_at|date:"d/m/Y H:i" }}</td><td><a class="btn btn-sm btn-primary" href="{% url 'web:proposal_detail' proposal.pk %}">Revisar</a></td></tr>
+{% empty %}<tr><td colspan="8" class="text-center text-secondary py-4">Nenhuma proposta pendente.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

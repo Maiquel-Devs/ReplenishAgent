@@ -3,6 +3,7 @@ from decimal import Decimal
 from threading import Barrier
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, close_old_connections, transaction
 
@@ -19,6 +20,13 @@ from apps.suppliers.models import ProductSupplier, Supplier
 
 
 pytestmark = pytest.mark.django_db
+
+@pytest.fixture
+def reviewer():
+    return get_user_model().objects.create_user(
+        username="purchase-reviewer",
+        password="test-password",
+    )
 
 
 @pytest.fixture
@@ -180,64 +188,64 @@ def test_arbitrary_total_is_rejected(product, supplier):
         proposal.save()
 
 
-def test_approve_pending_proposal(proposal):
-    decided = approve_purchase_proposal(proposal)
+def test_approve_pending_proposal(proposal, reviewer):
+    decided = approve_purchase_proposal(proposal, reviewed_by=reviewer)
 
     assert decided.status == PurchaseProposal.Status.APPROVED
     assert decided.reviewed_at is not None
 
 
-def test_repeated_approval_is_rejected(proposal):
-    decided = approve_purchase_proposal(proposal)
+def test_repeated_approval_is_rejected(proposal, reviewer):
+    decided = approve_purchase_proposal(proposal, reviewed_by=reviewer)
 
     with pytest.raises(ValidationError):
-        approve_purchase_proposal(decided)
+        approve_purchase_proposal(decided, reviewed_by=reviewer)
 
 
-def test_approval_of_rejected_proposal_is_rejected(proposal):
-    rejected = reject_purchase_proposal(proposal)
+def test_approval_of_rejected_proposal_is_rejected(proposal, reviewer):
+    rejected = reject_purchase_proposal(proposal, reviewed_by=reviewer)
 
     with pytest.raises(ValidationError):
-        approve_purchase_proposal(rejected)
+        approve_purchase_proposal(rejected, reviewed_by=reviewer)
 
 
-def test_approval_does_not_change_stock_or_create_movement(product, proposal):
+def test_approval_does_not_change_stock_or_create_movement(product, proposal, reviewer):
     inventory = Inventory.objects.create(product=product, current_quantity=4)
     movement_count = StockMovement.objects.count()
 
-    approve_purchase_proposal(proposal)
+    approve_purchase_proposal(proposal, reviewed_by=reviewer)
 
     inventory.refresh_from_db()
     assert inventory.current_quantity == 4
     assert StockMovement.objects.count() == movement_count
 
 
-def test_reject_pending_proposal(proposal):
-    decided = reject_purchase_proposal(proposal)
+def test_reject_pending_proposal(proposal, reviewer):
+    decided = reject_purchase_proposal(proposal, reviewed_by=reviewer)
 
     assert decided.status == PurchaseProposal.Status.REJECTED
     assert decided.reviewed_at is not None
 
 
-def test_repeated_rejection_is_rejected(proposal):
-    decided = reject_purchase_proposal(proposal)
+def test_repeated_rejection_is_rejected(proposal, reviewer):
+    decided = reject_purchase_proposal(proposal, reviewed_by=reviewer)
 
     with pytest.raises(ValidationError):
-        reject_purchase_proposal(decided)
+        reject_purchase_proposal(decided, reviewed_by=reviewer)
 
 
-def test_rejection_of_approved_proposal_is_rejected(proposal):
-    approved = approve_purchase_proposal(proposal)
+def test_rejection_of_approved_proposal_is_rejected(proposal, reviewer):
+    approved = approve_purchase_proposal(proposal, reviewed_by=reviewer)
 
     with pytest.raises(ValidationError):
-        reject_purchase_proposal(approved)
+        reject_purchase_proposal(approved, reviewed_by=reviewer)
 
 
-def test_rejection_does_not_change_stock(product, proposal):
+def test_rejection_does_not_change_stock(product, proposal, reviewer):
     inventory = Inventory.objects.create(product=product, current_quantity=4)
     movement_count = StockMovement.objects.count()
 
-    reject_purchase_proposal(proposal)
+    reject_purchase_proposal(proposal, reviewed_by=reviewer)
 
     inventory.refresh_from_db()
     assert inventory.current_quantity == 4
@@ -314,6 +322,9 @@ def test_concurrent_decisions_allow_only_one_winner():
         product_supplier=relation,
         analysis=make_analysis(product),
     )
+    reviewer = get_user_model().objects.create_user(
+        username="concurrent-reviewer"
+    )
     barrier = Barrier(2)
 
     def decide(action):
@@ -321,7 +332,7 @@ def test_concurrent_decisions_allow_only_one_winner():
         try:
             thread_proposal = PurchaseProposal.objects.get(pk=proposal.pk)
             barrier.wait()
-            action(thread_proposal)
+            action(thread_proposal, reviewed_by=reviewer)
         except ValidationError:
             return False
         finally:

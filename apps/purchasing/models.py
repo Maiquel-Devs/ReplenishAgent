@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -55,11 +56,21 @@ class PurchaseProposal(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     reviewed_at = models.DateTimeField(blank=True, null=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="reviewed_purchase_proposals",
+        blank=True,
+        null=True,
+    )
 
     class Meta:
         ordering = ["-created_at", "-pk"]
         verbose_name = "Proposta de compra"
         verbose_name_plural = "Propostas de compra"
+        permissions = [
+            ("review_purchaseproposal", "Can review purchase proposals"),
+        ]
         constraints = [
             models.CheckConstraint(
                 condition=Q(quantity__gt=0),
@@ -87,10 +98,15 @@ class PurchaseProposal(models.Model):
             ),
             models.CheckConstraint(
                 condition=(
-                    Q(status="PENDING", reviewed_at__isnull=True)
+                    Q(
+                        status="PENDING",
+                        reviewed_at__isnull=True,
+                        reviewed_by__isnull=True,
+                    )
                     | Q(
                         status__in=("APPROVED", "REJECTED"),
                         reviewed_at__isnull=False,
+                        reviewed_by__isnull=False,
                     )
                 ),
                 name="purchase_proposal_review_state",
@@ -99,17 +115,17 @@ class PurchaseProposal(models.Model):
 
     def clean(self):
         super().clean()
-
-        if self.status == self.Status.PENDING and self.reviewed_at is not None:
+        is_pending = self.status == self.Status.PENDING
+        has_review = self.reviewed_at is not None or self.reviewed_by_id is not None
+        if is_pending and has_review:
             raise ValidationError(
-                {"reviewed_at": "A pending proposal cannot have a review date."}
+                "A pending proposal cannot contain review information."
             )
-        if (
-            self.status in (self.Status.APPROVED, self.Status.REJECTED)
-            and self.reviewed_at is None
+        if not is_pending and (
+            self.reviewed_at is None or self.reviewed_by_id is None
         ):
             raise ValidationError(
-                {"reviewed_at": "A decided proposal must have a review date."}
+                "A decided proposal requires review date and reviewer."
             )
 
         if (
@@ -128,6 +144,8 @@ class PurchaseProposal(models.Model):
         original = type(self).objects.filter(pk=self.pk).values(
             *IMMUTABLE_SNAPSHOT_FIELDS,
             "status",
+            "reviewed_at",
+            "reviewed_by_id",
         ).first()
         if original is None:
             return
@@ -141,9 +159,13 @@ class PurchaseProposal(models.Model):
             raise ValidationError(
                 "Proposal snapshot fields cannot be changed after creation."
             )
-
         if original["status"] != self.status and original["status"] != self.Status.PENDING:
             raise ValidationError("A decided proposal cannot change status.")
+        if original["status"] != self.Status.PENDING and (
+            original["reviewed_at"] != self.reviewed_at
+            or original["reviewed_by_id"] != self.reviewed_by_id
+        ):
+            raise ValidationError("Proposal review information is immutable.")
 
     def save(self, *args, **kwargs):
         self.full_clean()

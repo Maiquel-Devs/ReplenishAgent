@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
+from types import MappingProxyType
 from typing import Any
 
 from apps.agent.providers import ToolDefinition
@@ -19,20 +20,49 @@ class ToolPermission(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class ToolExecutionContext:
-    """Small provider-independent boundary for future authorization metadata."""
+    """Provider- and framework-independent identity used by authorization."""
 
+    user_id: int | None = None
+    is_authenticated: bool = False
+    permissions: frozenset[str] = frozenset()
+    execution_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.user_id is not None and (
+            isinstance(self.user_id, bool) or not isinstance(self.user_id, int)
+        ):
+            raise TypeError("user_id must be an integer or None.")
+        if self.is_authenticated and self.user_id is None:
+            raise ValueError("Authenticated contexts require a user_id.")
+        object.__setattr__(self, "permissions", frozenset(self.permissions))
+        object.__setattr__(
+            self,
+            "metadata",
+            MappingProxyType(dict(self.metadata)),
+        )
+
+    def has_permission(self, permission: str) -> bool:
+        return self.is_authenticated and permission in self.permissions
 
 
 @dataclass(frozen=True, slots=True)
 class ToolExecutionPolicy:
     allow_write: bool = False
+    write_permission: str = "agent.execute_agent_write"
 
-    def allows(self, permission: ToolPermission) -> bool:
+    def allows(
+        self,
+        permission: ToolPermission,
+        context: ToolExecutionContext,
+    ) -> bool:
         if permission in (ToolPermission.READ, ToolPermission.COMPUTE):
             return True
         if permission is ToolPermission.WRITE:
-            return self.allow_write
+            return (
+                self.allow_write
+                and context.has_permission(self.write_permission)
+            )
         return False
 
 

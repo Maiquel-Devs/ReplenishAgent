@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Administração | ReplenishAgent{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div><h1 class="h3 mb-1">Administração</h1><p class="text-secondary mb-0">Controle humano e rastreabilidade do Agent.</p></div>
+</div>
+<div class="row g-3 mb-4">
+  {% if perms.purchasing.review_purchaseproposal %}
+  <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-secondary">Propostas pendentes</div><div class="display-6">{{ pending_count }}</div><a href="{% url 'web:pending_proposals' %}">Revisar propostas</a></div></div></div>
+  {% endif %}
+  {% if perms.agent.view_agentexecution %}
+  <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-secondary">Auditoria do Agent</div><p class="mt-2 mb-2">Execuções, Tools e bloqueios observáveis.</p><a href="{% url 'web:agent_audit_list' %}">Abrir auditoria</a></div></div></div>
+  {% endif %}
+  <div class="col-md-4"><div class="card border-secondary h-100"><div class="card-body"><div class="text-secondary">Configuração de IA</div><p class="mb-0 mt-2">Disponível em uma fase futura. Nenhuma credencial é armazenada aqui.</p></div></div></div>
+</div>
+{% if perms.agent.view_agentexecution %}
+<div class="row g-4">
+  <div class="col-lg-7"><h2 class="h5">Execuções recentes</h2><div class="list-group">
+    {% for execution in recent_executions %}
+      <a class="list-group-item list-group-item-action d-flex justify-content-between" href="{% url 'web:agent_audit_detail' execution.pk %}"><span>{{ execution.started_at|date:"d/m/Y H:i" }} · {{ execution.provider }}</span><span class="badge text-bg-secondary">{{ execution.status }}</span></a>
+    {% empty %}<div class="list-group-item text-secondary">Nenhuma execução registrada.</div>{% endfor %}
+  </div></div>
+  <div class="col-lg-5"><h2 class="h5">Tools bloqueadas ou com falha</h2><div class="list-group">
+    {% for tool in recent_problem_tools %}<a class="list-group-item list-group-item-action" href="{% url 'web:agent_audit_detail' tool.execution_id %}">{{ tool.tool_name }} <span class="badge text-bg-warning">{{ tool.status }}</span></a>
+    {% empty %}<div class="list-group-item text-secondary">Nenhum evento recente.</div>{% endfor %}
+  </div></div>
+</div>
+{% endif %}
+{% endblock %}

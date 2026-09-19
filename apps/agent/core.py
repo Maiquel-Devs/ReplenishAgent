@@ -4,6 +4,11 @@ import json
 
 from apps.agent.providers import LLMMessage, LLMProvider, LLMRole
 
+from .audit import (
+    AgentAuditRecorder,
+    AgentExecutionStatus,
+    NoOpAgentAuditRecorder,
+)
 from .tools import ToolExecutionContext, ToolExecutionPolicy, ToolRegistry
 
 
@@ -29,6 +34,7 @@ class ReplenishAgent:
         tools: ToolRegistry,
         policy: ToolExecutionPolicy | None = None,
         context: ToolExecutionContext | None = None,
+        audit: AgentAuditRecorder | None = None,
         max_iterations: int = 8,
         system_prompt: str = SYSTEM_PROMPT,
     ) -> None:
@@ -48,6 +54,7 @@ class ReplenishAgent:
         self.tools = tools
         self.policy = policy or ToolExecutionPolicy()
         self.context = context or ToolExecutionContext()
+        self.audit = audit or NoOpAgentAuditRecorder()
         self.max_iterations = max_iterations
         self.system_prompt = system_prompt
 
@@ -55,6 +62,30 @@ class ReplenishAgent:
         if not isinstance(user_message, str) or not user_message.strip():
             raise ValueError("user_message must be a non-empty string.")
 
+        execution = self.audit.start(
+            context=self.context,
+            provider=type(self.provider).__name__,
+            model=str(getattr(self.provider, "model", "") or ""),
+            user_request=user_message,
+        )
+        try:
+            return self._run_loop(user_message, execution)
+        except AgentIterationLimitError:
+            self.audit.fail(
+                execution,
+                status=AgentExecutionStatus.LIMIT_REACHED,
+                error_code="iteration_limit",
+            )
+            raise
+        except Exception:
+            self.audit.fail(
+                execution,
+                status=AgentExecutionStatus.FAILED,
+                error_code="agent_error",
+            )
+            raise
+
+    def _run_loop(self, user_message: str, execution: object) -> str:
         messages = [
             LLMMessage(role=LLMRole.SYSTEM, content=self.system_prompt),
             LLMMessage(role=LLMRole.USER, content=user_message),
@@ -64,7 +95,12 @@ class ReplenishAgent:
         for iteration in range(self.max_iterations):
             response = self.provider.generate(messages, definitions)
             if not response.tool_calls:
-                return response.content or ""
+                final_response = response.content or ""
+                self.audit.complete(
+                    execution,
+                    final_response=final_response,
+                )
+                return final_response
 
             if iteration == self.max_iterations - 1:
                 raise AgentIterationLimitError(
@@ -79,10 +115,16 @@ class ReplenishAgent:
                 )
             )
             for call in response.tool_calls:
-                result = self.tools.execute(
-                    call,
-                    policy=self.policy,
-                    context=self.context,
+                permission = self.tools.permission_for(call.name)
+                result = self.audit.execute_tool(
+                    execution,
+                    call=call,
+                    permission_level=permission.value if permission else "",
+                    operation=lambda call=call: self.tools.execute(
+                        call,
+                        policy=self.policy,
+                        context=self.context,
+                    ),
                 )
                 messages.append(
                     LLMMessage(

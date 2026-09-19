@@ -7,6 +7,7 @@ from config.views import health
 
 urlpatterns = [
     path("", include("apps.web.urls")),
+    path("conta/", include("django.contrib.auth.urls")),
     path("admin/", admin.site.urls),
     path("health/", health, name="health"),
 ]
