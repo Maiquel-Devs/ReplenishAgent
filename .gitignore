@@ -1,0 +1,35 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+
+# Tests and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Django
+*.log
+db.sqlite3
+staticfiles/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# Operating systems
+.DS_Store
+Thumbs.db
