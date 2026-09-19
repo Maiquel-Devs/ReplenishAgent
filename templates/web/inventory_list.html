@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Estoque | ReplenishAgent{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3"><h1 class="h3">Estoque</h1><a class="btn btn-primary" href="{% url 'web:movement_create' %}">Registrar movimentação</a></div>
+<div class="card shadow-sm"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Produto</th><th>SKU</th><th>Quantidade atual</th><th>Mínimo</th><th>Situação</th></tr></thead><tbody>{% for product in products %}<tr><td>{{ product.name }}</td><td>{{ product.sku }}</td><td>{{ product.current_quantity }}</td><td>{{ product.minimum_stock }}</td><td>{% if product.current_quantity <= product.minimum_stock %}<span class="badge text-bg-warning">BAIXO</span>{% else %}<span class="badge text-bg-success">OK</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="5">Nenhum produto cadastrado.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

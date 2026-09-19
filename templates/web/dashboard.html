@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% load formatting %}
+{% block title %}Dashboard | ReplenishAgent{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4"><div><h1 class="h3 mb-1">Dashboard</h1><p class="text-secondary mb-0">Visão geral da operação.</p></div></div>
+<div class="row g-3 mb-4">
+  <div class="col-md-4"><div class="card h-100 shadow-sm"><div class="card-body"><div class="text-secondary">Produtos ativos</div><div class="display-6">{{ active_product_count }}</div></div></div></div>
+  <div class="col-md-4"><div class="card h-100 shadow-sm border-warning"><div class="card-body"><div class="text-secondary">Estoque baixo</div><div class="display-6">{{ low_stock_count }}</div></div></div></div>
+  <div class="col-md-4"><div class="card h-100 shadow-sm border-primary"><div class="card-body"><div class="text-secondary">Propostas pendentes</div><div class="display-6">{{ pending_proposal_count }}</div></div></div></div>
+</div>
+<div class="row g-4">
+  <div class="col-lg-6"><div class="card shadow-sm"><div class="card-header fw-semibold">Produtos que precisam de atenção</div><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Produto</th><th>Atual</th><th>Mínimo</th></tr></thead><tbody>{% for product in attention_products %}<tr><td><a href="{% url 'web:product_detail' product.pk %}">{{ product.name }}</a></td><td>{{ product.current_quantity }}</td><td>{{ product.minimum_stock }}</td></tr>{% empty %}<tr><td colspan="3" class="text-secondary">Nenhum produto em atenção.</td></tr>{% endfor %}</tbody></table></div></div></div>
+  <div class="col-lg-6"><div class="card shadow-sm"><div class="card-header fw-semibold">Últimas propostas</div><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Produto</th><th>Total</th><th>Status</th></tr></thead><tbody>{% for proposal in latest_proposals %}<tr><td><a href="{% url 'web:proposal_detail' proposal.pk %}">{{ proposal.product.name }}</a></td><td>{{ proposal.total_price|brl }}</td><td><span class="badge text-bg-secondary">{{ proposal.get_status_display }}</span></td></tr>{% empty %}<tr><td colspan="3" class="text-secondary">Nenhuma proposta criada.</td></tr>{% endfor %}</tbody></table></div></div></div>
+</div>
+{% endblock %}

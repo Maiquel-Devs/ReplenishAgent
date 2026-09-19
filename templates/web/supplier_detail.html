@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% load formatting %}
+{% block title %}{{ supplier.name }} | ReplenishAgent{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3"><h1 class="h3">{{ supplier.name }}</h1><a class="btn btn-outline-primary" href="{% url 'web:supplier_update' supplier.pk %}">Editar cadastro</a></div>
+<div class="row g-4"><div class="col-lg-5"><div class="card shadow-sm"><div class="card-body"><dl class="row mb-0"><dt class="col-4">CNPJ</dt><dd class="col-8">{{ supplier.cnpj|default:"-" }}</dd><dt class="col-4">Email</dt><dd class="col-8">{{ supplier.email|default:"-" }}</dd><dt class="col-4">Telefone</dt><dd class="col-8">{{ supplier.phone|default:"-" }}</dd><dt class="col-4">Ativo</dt><dd class="col-8">{{ supplier.is_active|yesno:"Sim,Não" }}</dd></dl></div></div></div>
+<div class="col-lg-7"><div class="card shadow-sm"><div class="card-header fw-semibold">Produtos fornecidos</div><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Produto</th><th>Preço</th><th>Lead time</th></tr></thead><tbody>{% for relation in supplier.product_suppliers.all %}<tr><td><a href="{% url 'web:product_detail' relation.product.pk %}">{{ relation.product.name }}</a></td><td>{{ relation.price|brl }}</td><td>{{ relation.lead_time_days }} dias</td></tr>{% empty %}<tr><td colspan="3">Nenhum produto relacionado.</td></tr>{% endfor %}</tbody></table></div></div></div></div>
+{% endblock %}

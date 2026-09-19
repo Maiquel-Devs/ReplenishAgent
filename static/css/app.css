@@ -1,0 +1,4 @@
+body { min-height: 100vh; }
+.card { border: 0; }
+.table > :not(caption) > * > * { padding: .85rem; }
+dl dt { color: #6c757d; }
