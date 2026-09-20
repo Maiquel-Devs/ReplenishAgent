@@ -36,7 +36,9 @@ def test_login_page_uses_replenish_agent_identity_without_old_visuals(client):
     content = response.content.decode()
 
     assert response.status_code == 200
-    assert "ReplenishAgent" in content
+    assert '<h1 class="h3 mb-2">ReplenishAgent</h1>' in content
+    assert 'class="public-header"' not in content
+    assert 'class="public-brand"' not in content
     assert "Análise e planejamento seguro de reposição" in content
     assert 'class="login-mark' not in content
     assert ">R<" not in content

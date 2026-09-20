@@ -3,8 +3,11 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.web.authorization import ADMINISTRATION_PERMISSIONS
-from apps.web.demo import DEMO_ACCOUNTS
+from apps.web.demo import (
+    DEMO_ACCOUNTS,
+    DEMO_ADMIN_PERMISSIONS,
+    DEMO_OPERATOR_PERMISSIONS,
+)
 
 
 class Command(BaseCommand):
@@ -20,14 +23,14 @@ class Command(BaseCommand):
             for permission in Permission.objects.select_related("content_type").filter(
                 content_type__app_label__in={
                     value.split(".", maxsplit=1)[0]
-                    for value in ADMINISTRATION_PERMISSIONS
+                    for value in DEMO_ADMIN_PERMISSIONS
                 }
             )
         }
-        missing_permissions = set(ADMINISTRATION_PERMISSIONS) - permissions.keys()
+        missing_permissions = set(DEMO_ADMIN_PERMISSIONS) - permissions.keys()
         if missing_permissions:
             raise CommandError(
-                "Required administrative permissions are unavailable: "
+                "Required demonstration permissions are unavailable: "
                 + ", ".join(sorted(missing_permissions))
             )
 
@@ -40,11 +43,11 @@ class Command(BaseCommand):
             user.set_password(account["password"])
             user.save()
             user.groups.clear()
-            if account["is_admin"]:
-                user.user_permissions.set(
-                    permissions[name] for name in ADMINISTRATION_PERMISSIONS
-                )
-            else:
-                user.user_permissions.clear()
+            permission_names = (
+                DEMO_ADMIN_PERMISSIONS
+                if account["is_admin"]
+                else DEMO_OPERATOR_PERMISSIONS
+            )
+            user.user_permissions.set(permissions[name] for name in permission_names)
 
         self.stdout.write(self.style.SUCCESS("Local demonstration users synchronized."))
