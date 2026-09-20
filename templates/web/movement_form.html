@@ -1,3 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Nova movimentação | ReplenishAgent{% endblock %}
-{% block content %}<div class="row justify-content-center"><div class="col-lg-7"><div class="card shadow-sm"><div class="card-body p-4"><h1 class="h4 mb-4">Registrar movimentação</h1><form method="post" novalidate>{% csrf_token %}{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}{% for field in form %}<div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}<button class="btn btn-primary" type="submit">Registrar</button> <a class="btn btn-outline-secondary" href="{% url 'web:movement_list' %}">Cancelar</a></form></div></div></div></div>{% endblock %}
+{% block content %}
+<div class="content-narrow">
+  <header class="page-header">
+    <div>
+      <h1 class="page-title">Registrar movimentação</h1>
+      <p class="page-description">Informe o produto, tipo e quantidade movimentada.</p>
+    </div>
+  </header>
+
+  <section class="card">
+    <div class="card-body p-4">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        {% include "includes/form_fields.html" %}
+        <div class="d-flex flex-column flex-sm-row gap-2">
+          <button class="btn btn-primary" type="submit">Registrar</button>
+          <a class="btn btn-outline-secondary" href="{% url 'web:movement_list' %}">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,6 +1,34 @@
 {% extends "base.html" %}
 {% block title %}Produtos | ReplenishAgent{% endblock %}
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3"><h1 class="h3">Produtos</h1>{% if perms.products.add_product %}<a class="btn btn-primary" href="{% url 'web:product_create' %}">Novo produto</a>{% endif %}</div>
-<div class="card shadow-sm"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Produto</th><th>SKU</th><th>Estoque</th><th>Mínimo</th><th>Ativo</th></tr></thead><tbody>{% for product in products %}<tr><td><a href="{% url 'web:product_detail' product.pk %}">{{ product.name }}</a></td><td>{{ product.sku }}</td><td>{{ product.current_quantity }}</td><td>{{ product.minimum_stock }}</td><td>{% if product.is_active %}<span class="badge text-bg-success">Sim</span>{% else %}<span class="badge text-bg-secondary">Não</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="5">Nenhum produto cadastrado.</td></tr>{% endfor %}</tbody></table></div></div>
+<header class="page-header">
+  <div>
+    <h1 class="page-title">Produtos</h1>
+    <p class="page-description">Catálogo de itens acompanhados pela operação.</p>
+  </div>
+  {% if perms.products.add_product %}
+    <a class="btn btn-primary" href="{% url 'web:product_create' %}">Novo produto</a>
+  {% endif %}
+</header>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead><tr><th>Produto</th><th>SKU</th><th>Estoque</th><th>Mínimo</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for product in products %}
+          <tr>
+            <td><a href="{% url 'web:product_detail' product.pk %}">{{ product.name }}</a></td>
+            <td>{{ product.sku }}</td>
+            <td>{{ product.current_quantity }}</td>
+            <td>{{ product.minimum_stock }}</td>
+            <td>{% if product.is_active %}<span class="badge text-bg-success">Ativo</span>{% else %}<span class="badge text-bg-secondary">Inativo</span>{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="empty-state">Nenhum produto cadastrado.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 {% endblock %}

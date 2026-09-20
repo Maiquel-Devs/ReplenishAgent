@@ -1,10 +1,35 @@
 {% extends "base.html" %}
 {% block title %}Auditoria do Agent | ReplenishAgent{% endblock %}
 {% block content %}
-<h1 class="h3 mb-3">Auditoria do Agent</h1>
-<div class="card shadow-sm"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
-<thead><tr><th>Data</th><th>Usuário</th><th>Provider</th><th>Model</th><th>Status</th><th>Duração</th><th></th></tr></thead>
-<tbody>{% for execution in executions %}<tr><td>{{ execution.started_at|date:"d/m/Y H:i:s" }}</td><td>{{ execution.user.get_username|default:"Sistema" }}</td><td>{{ execution.provider }}</td><td>{{ execution.model|default:"-" }}</td><td><span class="badge text-bg-secondary">{{ execution.status }}</span></td><td>{% if execution.duration_ms is not None %}{{ execution.duration_ms }} ms{% else %}-{% endif %}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'web:agent_audit_detail' execution.pk %}">Detalhes</a></td></tr>
-{% empty %}<tr><td colspan="7" class="text-center text-secondary py-4">Nenhuma execução registrada.</td></tr>{% endfor %}</tbody>
-</table></div></div>
+<header class="page-header">
+  <div>
+    <h1 class="page-title">Auditoria do Agent</h1>
+    <p class="page-description">Execuções e resultados observáveis do Agent.</p>
+  </div>
+</header>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr><th>Data</th><th>Usuário</th><th>Provider</th><th>Modelo</th><th>Status</th><th>Duração</th><th><span class="visually-hidden">Ações</span></th></tr>
+      </thead>
+      <tbody>
+        {% for execution in executions %}
+          <tr>
+            <td>{{ execution.started_at|date:"d/m/Y H:i:s" }}</td>
+            <td>{{ execution.user.get_username|default:"Sistema" }}</td>
+            <td>{{ execution.provider }}</td>
+            <td>{{ execution.model|default:"-" }}</td>
+            <td><span class="badge text-bg-secondary">{{ execution.status }}</span></td>
+            <td>{% if execution.duration_ms is not None %}{{ execution.duration_ms }} ms{% else %}-{% endif %}</td>
+            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{% url 'web:agent_audit_detail' execution.pk %}">Detalhes</a></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="7" class="empty-state">Nenhuma execução registrada.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 {% endblock %}

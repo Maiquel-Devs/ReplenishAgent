@@ -1,11 +1,66 @@
 {% extends "base.html" %}
 {% block title %}Execução {{ execution.pk }} | ReplenishAgent{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h3">Execução do Agent</h1><span class="badge text-bg-secondary">{{ execution.status }}</span></div>
-<div class="card shadow-sm mb-4"><div class="card-body"><dl class="row mb-0"><dt class="col-sm-3">ID</dt><dd class="col-sm-9 text-break">{{ execution.pk }}</dd><dt class="col-sm-3">Usuário</dt><dd class="col-sm-9">{{ execution.user.get_username|default:"Sistema" }}</dd><dt class="col-sm-3">Provider / model</dt><dd class="col-sm-9">{{ execution.provider }} / {{ execution.model|default:"-" }}</dd><dt class="col-sm-3">Início</dt><dd class="col-sm-9">{{ execution.started_at|date:"d/m/Y H:i:s" }}</dd><dt class="col-sm-3">Duração</dt><dd class="col-sm-9">{{ execution.duration_ms|default:"-" }} ms</dd><dt class="col-sm-3">Erro</dt><dd class="col-sm-9">{{ execution.error_code|default:"-" }}</dd></dl></div></div>
-<div class="card shadow-sm mb-4"><div class="card-header">Solicitação observável</div><div class="card-body"><pre class="mb-0 text-wrap">{{ execution.user_request }}</pre></div></div>
-<div class="card shadow-sm mb-4"><div class="card-header">Resposta final</div><div class="card-body"><pre class="mb-0 text-wrap">{{ execution.final_response|default:"-" }}</pre></div></div>
-<h2 class="h5">Tools</h2>
-{% for tool in execution.tool_executions.all %}<div class="card shadow-sm mb-3"><div class="card-body"><div class="d-flex justify-content-between"><strong>{{ tool.tool_name }}</strong><span class="badge {% if tool.status == 'EXECUTED' %}text-bg-success{% elif tool.status == 'BLOCKED' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ tool.status }}</span></div><div class="small text-secondary mb-2">Call ID: {{ tool.tool_call_id }} · Permissão: {{ tool.permission_level|default:"-" }}</div><div class="row g-3"><div class="col-md-6"><div class="small fw-semibold">Arguments</div><pre class="bg-light border rounded p-2 text-wrap">{{ tool.arguments }}</pre></div><div class="col-md-6"><div class="small fw-semibold">Resultado</div><pre class="bg-light border rounded p-2 text-wrap">{{ tool.result }}</pre></div></div>{% if tool.error_code %}<div class="text-danger small">Erro: {{ tool.error_code }}</div>{% endif %}</div></div>
-{% empty %}<p class="text-secondary">Nenhuma Tool foi solicitada.</p>{% endfor %}
+<header class="page-header">
+  <div>
+    <h1 class="page-title">Execução do Agent</h1>
+    <p class="page-description">Detalhes observáveis da execução e de suas Tools.</p>
+  </div>
+  <span class="badge text-bg-secondary">{{ execution.status }}</span>
+</header>
+
+<section class="card mb-4" aria-labelledby="execution-summary-title">
+  <div class="card-body">
+    <h2 class="visually-hidden" id="execution-summary-title">Resumo da execução</h2>
+    <dl class="row mb-0">
+      <dt class="col-sm-3">ID</dt><dd class="col-sm-9 text-break">{{ execution.pk }}</dd>
+      <dt class="col-sm-3">Usuário</dt><dd class="col-sm-9">{{ execution.user.get_username|default:"Sistema" }}</dd>
+      <dt class="col-sm-3">Provider / modelo</dt><dd class="col-sm-9">{{ execution.provider }} / {{ execution.model|default:"-" }}</dd>
+      <dt class="col-sm-3">Início</dt><dd class="col-sm-9">{{ execution.started_at|date:"d/m/Y H:i:s" }}</dd>
+      <dt class="col-sm-3">Duração</dt><dd class="col-sm-9">{{ execution.duration_ms|default:"-" }} ms</dd>
+      <dt class="col-sm-3">Erro</dt><dd class="col-sm-9">{{ execution.error_code|default:"-" }}</dd>
+    </dl>
+  </div>
+</section>
+
+<div class="row g-4 mb-4">
+  <div class="col-lg-6">
+    <section class="card h-100" aria-labelledby="observable-request-title">
+      <div class="card-header" id="observable-request-title">Solicitação observável</div>
+      <div class="card-body"><pre class="mb-0 text-wrap">{{ execution.user_request }}</pre></div>
+    </section>
+  </div>
+  <div class="col-lg-6">
+    <section class="card h-100" aria-labelledby="final-response-title">
+      <div class="card-header" id="final-response-title">Resposta final</div>
+      <div class="card-body"><pre class="mb-0 text-wrap">{{ execution.final_response|default:"-" }}</pre></div>
+    </section>
+  </div>
+</div>
+
+<h2 class="h5 mb-3">Tools</h2>
+{% for tool in execution.tool_executions.all %}
+  <section class="card mb-3">
+    <div class="card-body">
+      <div class="d-flex justify-content-between gap-3 mb-1">
+        <strong>{{ tool.tool_name }}</strong>
+        <span class="badge {% if tool.status == 'EXECUTED' %}text-bg-success{% elif tool.status == 'BLOCKED' %}text-bg-warning{% else %}text-bg-danger{% endif %}">{{ tool.status }}</span>
+      </div>
+      <div class="small text-secondary mb-3">Call ID: {{ tool.tool_call_id }} · Permissão: {{ tool.permission_level|default:"-" }}</div>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="small fw-semibold mb-1">Argumentos</div>
+          <pre class="bg-light border rounded p-2 text-wrap mb-0">{{ tool.arguments }}</pre>
+        </div>
+        <div class="col-md-6">
+          <div class="small fw-semibold mb-1">Resultado</div>
+          <pre class="bg-light border rounded p-2 text-wrap mb-0">{{ tool.result }}</pre>
+        </div>
+      </div>
+      {% if tool.error_code %}<div class="text-danger small mt-2">Erro: {{ tool.error_code }}</div>{% endif %}
+    </div>
+  </section>
+{% empty %}
+  <p class="text-secondary">Nenhuma Tool foi solicitada.</p>
+{% endfor %}
 {% endblock %}

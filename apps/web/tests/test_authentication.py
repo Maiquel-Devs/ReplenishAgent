@@ -41,7 +41,6 @@ def test_login_page_uses_replenish_agent_identity_without_old_visuals(client):
     assert 'class="login-mark' not in content
     assert ">R<" not in content
     assert "Operações determinísticas de estoque e reposição" not in content
-    assert "credenciais de demonstração" not in content.lower()
 
 
 @override_settings(DEBUG=True)

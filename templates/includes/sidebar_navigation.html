@@ -1,0 +1,46 @@
+<div class="sidebar-navigation d-flex flex-column h-100">
+  <a class="sidebar-brand" href="{% url 'web:dashboard' %}">ReplenishAgent</a>
+
+  <nav class="sidebar-menu flex-grow-1" aria-label="Navegação principal">
+    <section class="sidebar-section" aria-labelledby="navigation-main-{{ navigation_suffix }}">
+      <h2 class="sidebar-section-title" id="navigation-main-{{ navigation_suffix }}">Principal</h2>
+      <a class="app-nav-link{% if app_navigation.active_section == 'dashboard' %} active{% endif %}" href="{% url 'web:dashboard' %}"{% if app_navigation.active_section == 'dashboard' %} aria-current="page"{% endif %}>Dashboard</a>
+      <a class="app-nav-link app-nav-link-agent{% if app_navigation.active_section == 'agent' %} active{% endif %}" href="{% url 'web:agent_chat' %}"{% if app_navigation.active_section == 'agent' %} aria-current="page"{% endif %}><span aria-hidden="true">✦</span> <span>Agent</span></a>
+    </section>
+
+    <section class="sidebar-section" aria-labelledby="navigation-operation-{{ navigation_suffix }}">
+      <h2 class="sidebar-section-title" id="navigation-operation-{{ navigation_suffix }}">Operação</h2>
+      <a class="app-nav-link{% if app_navigation.active_section == 'products' %} active{% endif %}" href="{% url 'web:product_list' %}"{% if app_navigation.active_section == 'products' %} aria-current="page"{% endif %}>Produtos</a>
+      <a class="app-nav-link{% if app_navigation.active_section == 'suppliers' %} active{% endif %}" href="{% url 'web:supplier_list' %}"{% if app_navigation.active_section == 'suppliers' %} aria-current="page"{% endif %}>Fornecedores</a>
+      <a class="app-nav-link{% if app_navigation.active_section == 'inventory' %} active{% endif %}" href="{% url 'web:inventory_list' %}"{% if app_navigation.active_section == 'inventory' %} aria-current="page"{% endif %}>Estoque</a>
+      <a class="app-nav-link{% if app_navigation.active_section == 'movements' %} active{% endif %}" href="{% url 'web:movement_list' %}"{% if app_navigation.active_section == 'movements' %} aria-current="page"{% endif %}>Movimentações</a>
+      <a class="app-nav-link{% if app_navigation.active_section == 'replenishment' %} active{% endif %}" href="{% url 'web:replenishment_analysis' %}"{% if app_navigation.active_section == 'replenishment' %} aria-current="page"{% endif %}>Reposição</a>
+      <a class="app-nav-link{% if app_navigation.active_section == 'proposals' %} active{% endif %}" href="{% url 'web:proposal_list' %}"{% if app_navigation.active_section == 'proposals' %} aria-current="page"{% endif %}>Propostas</a>
+    </section>
+
+    {% if app_navigation.show_administration %}
+      <section class="sidebar-section" aria-labelledby="navigation-administration-{{ navigation_suffix }}">
+        <h2 class="sidebar-section-title" id="navigation-administration-{{ navigation_suffix }}">Administração</h2>
+        {% if app_navigation.can_review_proposals and not app_navigation.can_configure_ai and not app_navigation.can_view_audit %}
+          <a class="app-nav-link{% if app_navigation.active_section == 'proposals' %} active{% endif %}" href="{% url 'web:pending_proposals' %}"{% if app_navigation.active_section == 'proposals' %} aria-current="page"{% endif %}>Propostas pendentes</a>
+        {% endif %}
+        {% if app_navigation.can_configure_ai %}
+          <a class="app-nav-link{% if app_navigation.active_section == 'ai_configuration' %} active{% endif %}" href="{% url 'web:ai_configuration' %}"{% if app_navigation.active_section == 'ai_configuration' %} aria-current="page"{% endif %}>Configuração da IA</a>
+        {% endif %}
+        {% if app_navigation.can_view_audit %}
+          <a class="app-nav-link{% if app_navigation.active_section == 'audit' %} active{% endif %}" href="{% url 'web:agent_audit_list' %}"{% if app_navigation.active_section == 'audit' %} aria-current="page"{% endif %}>Auditoria</a>
+        {% endif %}
+      </section>
+    {% endif %}
+  </nav>
+
+  <section class="sidebar-account" aria-labelledby="account-title-{{ navigation_suffix }}">
+    <h2 class="sidebar-section-title mb-2" id="account-title-{{ navigation_suffix }}">Conta</h2>
+    <div class="sidebar-account-name text-truncate">{{ user.get_username }}</div>
+    <div class="sidebar-account-role">{{ app_navigation.role_label }}</div>
+    <form method="post" action="{% url 'logout' %}" class="mt-3">
+      {% csrf_token %}
+      <button class="btn app-logout-button w-100" type="submit">Sair</button>
+    </form>
+  </section>
+</div>
