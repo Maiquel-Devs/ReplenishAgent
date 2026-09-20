@@ -34,7 +34,7 @@ class DjangoAgentAuditRecorder(AgentAuditRecorder):
             "provider": provider[:100],
             "model": model[:255],
             "status": AgentExecutionStatus.RUNNING.value,
-            "user_request": user_request,
+            "user_request": sanitize_audit_data(user_request),
         }
         if execution_id is None:
             execution = AgentExecution.objects.create(**defaults)
@@ -155,7 +155,7 @@ class DjangoAgentAuditRecorder(AgentAuditRecorder):
             execution.status = status.value
             execution.finished_at = finished_at
             execution.duration_ms = max(0, int(duration.total_seconds() * 1000))
-            execution.final_response = final_response
+            execution.final_response = sanitize_audit_data(final_response)
             execution.error_code = error_code
             execution.save(
                 update_fields=(

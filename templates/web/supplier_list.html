@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Fornecedores | ReplenishAgent{% endblock %}
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3"><h1 class="h3">Fornecedores</h1><div><a class="btn btn-outline-primary" href="{% url 'web:product_supplier_list' %}">Relações</a> <a class="btn btn-primary" href="{% url 'web:supplier_create' %}">Novo fornecedor</a></div></div>
+<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3"><h1 class="h3">Fornecedores</h1><div><a class="btn btn-outline-primary" href="{% url 'web:product_supplier_list' %}">Relações</a> {% if perms.suppliers.add_supplier %}<a class="btn btn-primary" href="{% url 'web:supplier_create' %}">Novo fornecedor</a>{% endif %}</div></div>
 <div class="card shadow-sm"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Nome</th><th>CNPJ</th><th>Email</th><th>Ativo</th></tr></thead><tbody>{% for supplier in suppliers %}<tr><td><a href="{% url 'web:supplier_detail' supplier.pk %}">{{ supplier.name }}</a></td><td>{{ supplier.cnpj|default:"-" }}</td><td>{{ supplier.email|default:"-" }}</td><td>{{ supplier.is_active|yesno:"Sim,Não" }}</td></tr>{% empty %}<tr><td colspan="4">Nenhum fornecedor cadastrado.</td></tr>{% endfor %}</tbody></table></div></div>
 {% endblock %}

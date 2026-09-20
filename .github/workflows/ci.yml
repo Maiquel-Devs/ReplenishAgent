@@ -58,6 +58,17 @@ jobs:
       - name: Django system check
         run: python manage.py check
 
+      - name: Django production security check
+        env:
+          DJANGO_SECRET_KEY: ci-only-long-random-secret-for-deploy-check-4c2f7b9d1e6a
+          DJANGO_ALLOWED_HOSTS: app.example.com
+          DJANGO_HTTPS_ENABLED: "True"
+          DJANGO_TRUST_PROXY_SSL_HEADER: "True"
+          DJANGO_SECURE_HSTS_SECONDS: "31536000"
+          DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS: "True"
+          DJANGO_SECURE_HSTS_PRELOAD: "True"
+        run: python manage.py check --deploy
+
       - name: Check migrations
         run: python manage.py makemigrations --check --dry-run
 

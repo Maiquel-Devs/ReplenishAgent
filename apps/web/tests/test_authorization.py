@@ -166,3 +166,88 @@ def test_authorized_users_can_open_each_state_change_form(client, catalog):
     ]
 
     assert [client.get(url).status_code for url in urls] == [200] * len(urls)
+
+
+@pytest.mark.parametrize(
+    ("url_name", "args", "action_label"),
+    [
+        ("web:product_list", (), "Novo produto"),
+        ("web:product_detail", ("product",), "Editar cadastro"),
+        ("web:supplier_list", (), "Novo fornecedor"),
+        ("web:supplier_detail", ("supplier",), "Editar cadastro"),
+        ("web:product_supplier_list", (), "Nova relação"),
+        ("web:inventory_list", (), "Registrar movimentação"),
+        ("web:movement_list", (), "Nova movimentação"),
+    ],
+)
+def test_state_change_actions_are_hidden_without_permission(
+    client,
+    catalog,
+    url_name,
+    args,
+    action_label,
+):
+    product, supplier, _ = catalog
+    resolved_args = tuple(
+        product.pk if value == "product" else supplier.pk
+        for value in args
+    )
+    client.force_login(
+        get_user_model().objects.create_user(username=f"plain-{url_name}")
+    )
+
+    response = client.get(reverse(url_name, args=resolved_args))
+
+    assert response.status_code == 200
+    assert action_label not in response.content.decode()
+
+
+def test_proposal_action_is_hidden_without_permission(client, catalog):
+    product, _, relation = catalog
+    client.force_login(
+        get_user_model().objects.create_user(username="plain-analysis")
+    )
+
+    response = client.post(
+        reverse("web:replenishment_analysis"),
+        {
+            "product": product.pk,
+            "product_supplier": relation.pk,
+            "consumption_days": 30,
+            "planning_days": 30,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Criar proposta de compra" not in response.content.decode()
+
+
+def test_authorized_user_sees_matching_state_change_actions(client, catalog):
+    product, _, relation = catalog
+    user = get_user_model().objects.create_user(username="visible-actions")
+    user.user_permissions.add(
+        *Permission.objects.filter(
+            codename__in=(
+                "add_product",
+                "add_stockmovement",
+                "add_purchaseproposal",
+            )
+        )
+    )
+    client.force_login(user)
+
+    product_list = client.get(reverse("web:product_list"))
+    inventory_list = client.get(reverse("web:inventory_list"))
+    analysis = client.post(
+        reverse("web:replenishment_analysis"),
+        {
+            "product": product.pk,
+            "product_supplier": relation.pk,
+            "consumption_days": 30,
+            "planning_days": 30,
+        },
+    )
+
+    assert "Novo produto" in product_list.content.decode()
+    assert "Registrar movimentação" in inventory_list.content.decode()
+    assert "Criar proposta de compra" in analysis.content.decode()

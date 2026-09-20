@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from apps.agent.sanitization import (
     MAX_DEPTH,
     MAX_ITEMS,
@@ -13,6 +15,8 @@ def test_sensitive_keys_are_redacted_recursively_in_objects_and_lists():
     payload = {
         "api_key": "key-secret",
         "TOKEN": "token-secret",
+        "access_token": "access-secret",
+        "session-id": "session-secret",
         "nested": {
             "authorization": "Bearer secret",
             "password": "password-secret",
@@ -36,6 +40,8 @@ def test_sensitive_keys_are_redacted_recursively_in_objects_and_lists():
     }
     assert sanitized["items"] == [{"secret": REDACTED, "visible": "ok"}]
     assert "key-secret" not in repr(sanitized)
+    assert "access-secret" not in repr(sanitized)
+    assert "session-secret" not in repr(sanitized)
     assert "list-secret" not in repr(sanitized)
 
 
@@ -61,3 +67,20 @@ def test_large_strings_collections_and_depth_are_bounded():
     assert len(bounded["items"]) == MAX_ITEMS
     assert len(bounded["mapping"]) == MAX_ITEMS + 1
     assert bounded["mapping"]["_truncated"] is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "Authorization: Bearer authorization-secret",
+        "token=token-secret",
+        'api_key: "api-secret"',
+        "Cookie: sessionid=cookie-secret",
+        "Bearer standalone-secret",
+    ],
+)
+def test_sensitive_values_embedded_in_text_are_redacted(value):
+    sanitized = sanitize_audit_data(value)
+
+    assert "secret" not in sanitized
+    assert REDACTED in sanitized

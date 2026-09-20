@@ -94,6 +94,20 @@ def test_completed_execution_records_identity_provider_model_and_response(user):
     assert execution.error_code == ""
 
 
+def test_execution_redacts_secrets_from_observable_text(user):
+    provider = FakeLLMProvider(
+        [LLMResponse(content="Authorization: Bearer response-secret")]
+    )
+
+    audited_agent(provider, ToolRegistry(), user).run(
+        "password=request-secret"
+    )
+
+    execution = AgentExecution.objects.get()
+    assert execution.user_request == "password=[REDACTED]"
+    assert execution.final_response == "Authorization: [REDACTED]"
+
+
 def test_execution_failure_is_recorded_without_internal_message(user):
     provider = FakeLLMProvider([])
 
