@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import ROUND_CEILING, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_EVEN, Decimal
 from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from apps.products.models import Product
+
+WHOLE_UNIT_TOLERANCE = Decimal("1e-9")
 
 
 class RiskLevel(str, Enum):
@@ -110,6 +112,9 @@ def calculate_replenishment_quantity(
     requirement = target_stock - stock
     if requirement <= 0:
         return Decimal("0")
+    nearest_unit = requirement.to_integral_value(rounding=ROUND_HALF_EVEN)
+    if abs(requirement - nearest_unit) <= WHOLE_UNIT_TOLERANCE:
+        return nearest_unit
     return requirement.to_integral_value(rounding=ROUND_CEILING)
 
 

@@ -127,3 +127,15 @@ def test_risk_is_low_with_stock_and_zero_consumption():
 def test_float_input_is_rejected():
     with pytest.raises(TypeError):
         calculate_stock_coverage(20, 2.0)
+
+def test_replenishment_ignores_decimal_noise_at_whole_unit_boundary():
+    repeating_average = Decimal(35) / Decimal(30)
+
+    result = calculate_replenishment_quantity(
+        current_stock=5,
+        average_daily_consumption=repeating_average,
+        planning_days=30,
+        minimum_stock=5,
+    )
+
+    assert result == Decimal("35")

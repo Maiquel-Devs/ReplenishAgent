@@ -393,3 +393,76 @@ def test_llm_message_tool_metadata_is_provider_independent_and_validated():
         LLMMessage(role="user", content="", tool_calls=(call,))
     with pytest.raises(ValueError, match="only valid for tool"):
         LLMMessage(role="user", content="", tool_call_id="call-1")
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"base_url": "", "model": "model"},
+        {"base_url": "http://ollama", "model": ""},
+        {"base_url": "http://ollama", "model": "model", "timeout": 0},
+    ],
+)
+def test_ollama_rejects_missing_configuration(kwargs):
+    with pytest.raises(ValueError):
+        OllamaProvider(**kwargs)
+
+
+def test_ollama_rejects_invalid_json_and_missing_tool_name():
+    def invalid_json(request):
+        return httpx.Response(200, content=b"{invalid", request=request)
+
+    provider = OllamaProvider(
+        base_url="http://ollama",
+        model="model",
+        client=httpx.Client(transport=httpx.MockTransport(invalid_json)),
+    )
+    with pytest.raises(LLMProviderError, match="invalid JSON"):
+        provider.generate([LLMMessage(role="user", content="Hello")])
+
+    provider = ollama_provider(
+        {
+            "message": {
+                "content": "",
+                "tool_calls": [{"function": {"arguments": {}}}],
+            }
+        }
+    )
+    with pytest.raises(LLMProviderError, match="without a name"):
+        provider.generate([LLMMessage(role="user", content="Hello")])
+
+
+def test_mistral_rejects_invalid_model_content_and_tool_identity():
+    with pytest.raises(ValueError, match="model"):
+        MistralProvider(api_key="key", model="")
+
+    provider = MistralProvider(
+        api_key="key",
+        model="model",
+        client=FakeMistralClient(mistral_response(content=123)),
+    )
+    with pytest.raises(LLMProviderError, match="content"):
+        provider.generate([LLMMessage(role="user", content="Hello")])
+
+    missing_id = SimpleNamespace(
+        id="",
+        function=SimpleNamespace(name="tool", arguments={}),
+    )
+    provider = MistralProvider(
+        api_key="key",
+        model="model",
+        client=FakeMistralClient(mistral_response(tool_calls=[missing_id])),
+    )
+    with pytest.raises(LLMProviderError, match="without an ID"):
+        provider.generate([LLMMessage(role="user", content="Hello")])
+
+
+def test_factory_rejects_invalid_ollama_timeout(monkeypatch):
+    monkeypatch.setenv("OLLAMA_TIMEOUT", "not-a-number")
+
+    with pytest.raises(ValueError, match="must be a number"):
+        create_llm_provider(
+            provider="ollama",
+            base_url="http://ollama",
+            model="model",
+            client=Mock(),
+        )

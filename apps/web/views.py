@@ -10,14 +10,20 @@ from apps.inventory.models import Inventory, StockMovement
 from apps.inventory.services import register_stock_movement
 from apps.products.models import Product
 from apps.purchasing.models import PurchaseProposal
-from apps.purchasing.services import (
-    approve_purchase_proposal,
-    create_purchase_proposal,
-    reject_purchase_proposal,
-)
+from apps.purchasing.services import create_purchase_proposal
 from apps.replenishment.services import analyze_replenishment
 from apps.suppliers.models import ProductSupplier, Supplier
 
+from .authorization import (
+    ADD_PRODUCT_PERMISSION,
+    ADD_PRODUCT_SUPPLIER_PERMISSION,
+    ADD_PURCHASE_PROPOSAL_PERMISSION,
+    ADD_STOCK_MOVEMENT_PERMISSION,
+    ADD_SUPPLIER_PERMISSION,
+    CHANGE_PRODUCT_PERMISSION,
+    CHANGE_SUPPLIER_PERMISSION,
+    permission_required,
+)
 from .forms import (
     ProductForm,
     ProductSupplierForm,
@@ -86,6 +92,7 @@ def product_detail(request: HttpRequest, pk: int) -> HttpResponse:
     )
 
 
+@permission_required(ADD_PRODUCT_PERMISSION)
 def product_create(request: HttpRequest) -> HttpResponse:
     form = ProductForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -99,6 +106,7 @@ def product_create(request: HttpRequest) -> HttpResponse:
     )
 
 
+@permission_required(CHANGE_PRODUCT_PERMISSION)
 def product_update(request: HttpRequest, pk: int) -> HttpResponse:
     product = get_object_or_404(Product, pk=pk)
     form = ProductForm(request.POST or None, instance=product)
@@ -126,6 +134,7 @@ def supplier_detail(request: HttpRequest, pk: int) -> HttpResponse:
     return render(request, "web/supplier_detail.html", {"supplier": supplier})
 
 
+@permission_required(ADD_SUPPLIER_PERMISSION)
 def supplier_create(request: HttpRequest) -> HttpResponse:
     form = SupplierForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -139,6 +148,7 @@ def supplier_create(request: HttpRequest) -> HttpResponse:
     )
 
 
+@permission_required(CHANGE_SUPPLIER_PERMISSION)
 def supplier_update(request: HttpRequest, pk: int) -> HttpResponse:
     supplier = get_object_or_404(Supplier, pk=pk)
     form = SupplierForm(request.POST or None, instance=supplier)
@@ -165,6 +175,7 @@ def product_supplier_list(request: HttpRequest) -> HttpResponse:
     )
 
 
+@permission_required(ADD_PRODUCT_SUPPLIER_PERMISSION)
 def product_supplier_create(request: HttpRequest) -> HttpResponse:
     form = ProductSupplierForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -195,6 +206,7 @@ def movement_list(request: HttpRequest) -> HttpResponse:
     return render(request, "web/movement_list.html", {"movements": movements})
 
 
+@permission_required(ADD_STOCK_MOVEMENT_PERMISSION)
 def movement_create(request: HttpRequest) -> HttpResponse:
     form = StockMovementForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -243,6 +255,7 @@ def replenishment_analysis(request: HttpRequest) -> HttpResponse:
 
 
 @require_POST
+@permission_required(ADD_PURCHASE_PROPOSAL_PERMISSION)
 def proposal_create_from_analysis(request: HttpRequest) -> HttpResponse:
     form = ReplenishmentRequestForm(request.POST)
     if not form.is_valid():

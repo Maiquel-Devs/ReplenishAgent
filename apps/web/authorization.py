@@ -8,6 +8,13 @@ from django.core.exceptions import PermissionDenied
 from django.http import HttpRequest, HttpResponse
 
 
+ADD_PRODUCT_PERMISSION = "products.add_product"
+CHANGE_PRODUCT_PERMISSION = "products.change_product"
+ADD_SUPPLIER_PERMISSION = "suppliers.add_supplier"
+CHANGE_SUPPLIER_PERMISSION = "suppliers.change_supplier"
+ADD_PRODUCT_SUPPLIER_PERMISSION = "suppliers.add_productsupplier"
+ADD_STOCK_MOVEMENT_PERMISSION = "inventory.add_stockmovement"
+ADD_PURCHASE_PROPOSAL_PERMISSION = "purchasing.add_purchaseproposal"
 REVIEW_PROPOSAL_PERMISSION = "purchasing.review_purchaseproposal"
 VIEW_AGENT_AUDIT_PERMISSION = "agent.view_agentexecution"
 ADMINISTRATION_PERMISSIONS = (

@@ -83,6 +83,16 @@ class DjangoAgentAuditRecorder(AgentAuditRecorder):
                     "arguments": sanitize_audit_data(call.arguments),
                 },
             )
+            sanitized_arguments = sanitize_audit_data(call.arguments)
+            if not _matches_recorded_call(event, call.name, sanitized_arguments):
+                return {
+                    "ok": False,
+                    "error": {
+                        "code": "idempotency_conflict",
+                        "message": "Tool call ID was already used with different data.",
+                    },
+                }
+
             if event.finished_at is not None and event.result is not None:
                 return event.result
 
@@ -90,7 +100,7 @@ class DjangoAgentAuditRecorder(AgentAuditRecorder):
             sanitized_result = sanitize_audit_data(result)
             event.tool_name = call.name
             event.permission_level = permission_level
-            event.arguments = sanitize_audit_data(call.arguments)
+            event.arguments = sanitized_arguments
             event.result = sanitized_result
             event.status = self._tool_status(result).value
             event.error_code = self._error_code(result)
@@ -171,3 +181,11 @@ class DjangoAgentAuditRecorder(AgentAuditRecorder):
         if result.get("ok") is True:
             return ""
         return str(result.get("error", {}).get("code", "internal_error"))[:100]
+
+
+def _matches_recorded_call(
+    event: AgentToolExecution,
+    tool_name: str,
+    arguments: Any,
+) -> bool:
+    return event.tool_name == tool_name and event.arguments == arguments

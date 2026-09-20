@@ -89,3 +89,21 @@ def test_lead_time_cannot_be_negative(product, supplier):
             price=Decimal("49.90"),
             lead_time_days=-1,
         )
+
+def test_multiple_suppliers_without_cnpj_are_allowed():
+    first = Supplier.objects.create(name="Sem CNPJ 1")
+    second = Supplier.objects.create(name="Sem CNPJ 2")
+
+    assert first.cnpj is None
+    assert second.cnpj is None
+
+
+def test_product_supplier_can_be_marked_as_preferred(product, supplier):
+    relation = ProductSupplier.objects.create(
+        product=product,
+        supplier=supplier,
+        price=Decimal("49.90"),
+        is_preferred=True,
+    )
+
+    assert relation.is_preferred is True

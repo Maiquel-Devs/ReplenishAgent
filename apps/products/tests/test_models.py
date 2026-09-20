@@ -37,3 +37,12 @@ def test_minimum_stock_cannot_be_negative():
             sku="INVALID-001",
             minimum_stock=-1,
         )
+
+def test_product_can_be_created_inactive():
+    product = Product.objects.create(
+        name="Produto inativo",
+        sku="INACTIVE-001",
+        is_active=False,
+    )
+
+    assert product.is_active is False

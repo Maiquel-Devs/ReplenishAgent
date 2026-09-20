@@ -205,3 +205,34 @@ def test_concurrent_out_movements_cannot_oversell_stock():
         .order_by("pk")
         .values_list("type", "quantity")
     ) == [("IN", 10), ("OUT", 7)]
+
+def test_out_movement_can_reduce_inventory_to_exactly_zero(product):
+    register_stock_movement(
+        product=product,
+        movement_type=StockMovement.Type.IN,
+        quantity=5,
+    )
+
+    movement = register_stock_movement(
+        product=product,
+        movement_type=StockMovement.Type.OUT,
+        quantity=5,
+    )
+
+    assert movement.quantity == 5
+    assert Inventory.objects.get(product=product).current_quantity == 0
+    assert StockMovement.objects.filter(product=product).count() == 2
+
+
+def test_unsaved_product_is_rejected_without_persistence():
+    unsaved = Product(name="Unsaved", sku="UNSAVED")
+
+    with pytest.raises(ValidationError, match="persistido"):
+        register_stock_movement(
+            product=unsaved,
+            movement_type=StockMovement.Type.IN,
+            quantity=1,
+        )
+
+    assert Inventory.objects.count() == 0
+    assert StockMovement.objects.count() == 0

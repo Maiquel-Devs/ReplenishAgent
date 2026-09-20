@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
+from django.contrib.auth.models import Permission
 from django.urls import reverse
 
 from apps.inventory.models import Inventory, StockMovement
@@ -18,6 +19,24 @@ from apps.replenishment.calculations import ReplenishmentAnalysis, RiskLevel
 from apps.suppliers.models import ProductSupplier, Supplier
 
 
+
+@pytest.fixture(autouse=True)
+def authorized_state_change_client(client):
+    user = get_user_model().objects.create_user(username="web-operator")
+    user.user_permissions.add(
+        *Permission.objects.filter(
+            codename__in=(
+                "add_product",
+                "change_product",
+                "add_supplier",
+                "change_supplier",
+                "add_productsupplier",
+                "add_stockmovement",
+                "add_purchaseproposal",
+            )
+        )
+    )
+    client.force_login(user)
 from apps.web.templatetags.formatting import brl
 pytestmark = pytest.mark.django_db
 
@@ -381,3 +400,26 @@ def test_product_and_supplier_detail_pages(client, product, supplier):
 
     assert product_response.status_code == 200
     assert supplier_response.status_code == 200
+
+def test_relationship_movement_and_proposal_lists_render_related_data(
+    client,
+    product,
+    relation,
+    proposal,
+):
+    register_stock_movement(
+        product=product,
+        movement_type=StockMovement.Type.IN,
+        quantity=1,
+    )
+
+    relationship_response = client.get(reverse("web:product_supplier_list"))
+    movement_response = client.get(reverse("web:movement_list"))
+    proposal_response = client.get(reverse("web:proposal_list"))
+
+    assert relationship_response.status_code == 200
+    assert relation.supplier.name in relationship_response.content.decode()
+    assert movement_response.status_code == 200
+    assert product.name in movement_response.content.decode()
+    assert proposal_response.status_code == 200
+    assert proposal.supplier.name in proposal_response.content.decode()

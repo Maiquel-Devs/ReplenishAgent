@@ -62,8 +62,6 @@ class ProductSupplierForm(BootstrapFormMixin, forms.ModelForm):
             "lead_time_days",
             "is_preferred",
         )
-
-    def __init__(self, *args, **kwargs):
         labels = {
             "product": "Produto",
             "supplier": "Fornecedor",
@@ -71,6 +69,8 @@ class ProductSupplierForm(BootstrapFormMixin, forms.ModelForm):
             "lead_time_days": "Lead time (dias)",
             "is_preferred": "Preferencial",
         }
+
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._apply_bootstrap_classes()
         self.fields["product"].queryset = Product.objects.order_by("name")
