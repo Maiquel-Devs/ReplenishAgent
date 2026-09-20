@@ -7,6 +7,7 @@ app_name = "web"
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
+    path("agent/", views.agent_chat, name="agent_chat"),
     path("produtos/", views.product_list, name="product_list"),
     path("produtos/novo/", views.product_create, name="product_create"),
     path("produtos/<int:pk>/", views.product_detail, name="product_detail"),
@@ -44,6 +45,11 @@ urlpatterns = [
         "administracao/",
         admin_views.administration_overview,
         name="administration_overview",
+    ),
+    path(
+        "administracao/ia/",
+        admin_views.ai_configuration,
+        name="ai_configuration",
     ),
     path(
         "administracao/propostas/",

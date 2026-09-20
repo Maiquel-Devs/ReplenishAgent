@@ -1,5 +1,7 @@
 """Django settings for the ReplenishAgent project."""
+
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -38,6 +40,13 @@ def _env_non_negative_int(name: str, default: int) -> int:
     return value
 
 
+def _env_positive_int(name: str, default: int) -> int:
+    value = _env_non_negative_int(name, default)
+    if value == 0:
+        raise ImproperlyConfigured(f"{name} must be greater than zero.")
+    return value
+
+
 SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 DEBUG = _env_bool("DJANGO_DEBUG", False)
 ALLOWED_HOSTS = _env_list(
@@ -45,6 +54,7 @@ ALLOWED_HOSTS = _env_list(
     "localhost,127.0.0.1",
 )
 CSRF_TRUSTED_ORIGINS = _env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
+
 
 HTTPS_ENABLED = _env_bool("DJANGO_HTTPS_ENABLED", False)
 SESSION_COOKIE_SECURE = _env_bool(
@@ -81,6 +91,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "axes",
     "apps.products",
     "apps.suppliers",
     "apps.inventory",
@@ -96,9 +107,29 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.auth.middleware.LoginRequiredMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "axes.middleware.AxesMiddleware",
 ]
+
+AUTHENTICATION_BACKENDS = [
+    "axes.backends.AxesStandaloneBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+
+AXES_FAILURE_LIMIT = _env_positive_int("DJANGO_LOGIN_FAILURE_LIMIT", 5)
+AXES_COOLOFF_TIME = timedelta(
+    minutes=_env_positive_int("DJANGO_LOGIN_COOLOFF_MINUTES", 15)
+)
+AXES_USE_ATTEMPT_EXPIRATION = True
+AXES_RESET_ON_SUCCESS = True
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+AXES_CLIENT_IP_CALLABLE = "apps.web.security.direct_peer_ip"
+AXES_LOCKOUT_CALLABLE = "apps.web.auth_views.login_lockout"
+AXES_HTTP_RESPONSE_CODE = 429
+AXES_ENABLE_RETRY_AFTER_HEADER = True
+AXES_SENSITIVE_PARAMETERS = ["username", "ip_address", "password"]
 
 ROOT_URLCONF = "config.urls"
 
@@ -156,5 +187,5 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = "login"
-LOGIN_REDIRECT_URL = "web:dashboard"
-LOGOUT_REDIRECT_URL = "web:dashboard"
+LOGIN_REDIRECT_URL = "web:agent_chat"
+LOGOUT_REDIRECT_URL = "login"

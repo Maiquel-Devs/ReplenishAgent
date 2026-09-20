@@ -16,6 +16,24 @@ class BootstrapFormMixin:
             field.widget.attrs["class"] = css_class
 
 
+class AgentMessageForm(BootstrapFormMixin, forms.Form):
+    message = forms.CharField(
+        max_length=2000,
+        label="Mensagem",
+        widget=forms.Textarea(
+            attrs={
+                "rows": 2,
+                "placeholder": "Digite sua mensagem...",
+                "autocomplete": "off",
+            }
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._apply_bootstrap_classes()
+
+
 class ProductForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Product

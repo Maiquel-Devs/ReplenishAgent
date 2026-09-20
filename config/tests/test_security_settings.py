@@ -38,6 +38,10 @@ def test_development_http_defaults_remain_simple_and_safe():
     assert configured["SECURE_SSL_REDIRECT"] is False
     assert configured["SECURE_HSTS_SECONDS"] == 0
     assert "SECURE_PROXY_SSL_HEADER" not in configured
+    assert configured["AXES_FAILURE_LIMIT"] == 5
+    assert configured["AXES_COOLOFF_TIME"].total_seconds() == 900
+    assert configured["AXES_LOCKOUT_PARAMETERS"] == [["username", "ip_address"]]
+    assert configured["AXES_CLIENT_IP_CALLABLE"].endswith("direct_peer_ip")
 
 
 def test_production_https_configuration_uses_secure_defaults():
@@ -54,9 +58,7 @@ def test_production_https_configuration_uses_secure_defaults():
         "app.example.com",
         "admin.example.com",
     ]
-    assert configured["CSRF_TRUSTED_ORIGINS"] == [
-        "https://app.example.com"
-    ]
+    assert configured["CSRF_TRUSTED_ORIGINS"] == ["https://app.example.com"]
     assert configured["SESSION_COOKIE_SECURE"] is True
     assert configured["CSRF_COOKIE_SECURE"] is True
     assert configured["SECURE_SSL_REDIRECT"] is True
@@ -74,6 +76,14 @@ def test_production_https_configuration_uses_secure_defaults():
 def test_invalid_security_environment_value_fails_closed():
     with pytest.raises(ImproperlyConfigured, match="must be a boolean"):
         load_settings(DJANGO_HTTPS_ENABLED="sometimes")
+
+
+def test_invalid_login_protection_limits_fail_closed():
+    with pytest.raises(ImproperlyConfigured, match="greater than zero"):
+        load_settings(DJANGO_LOGIN_FAILURE_LIMIT="0")
+
+    with pytest.raises(ImproperlyConfigured, match="must be an integer"):
+        load_settings(DJANGO_LOGIN_COOLOFF_MINUTES="later")
 
 
 def test_secret_key_is_required_from_environment():

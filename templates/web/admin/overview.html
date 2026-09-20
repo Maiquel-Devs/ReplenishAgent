@@ -11,7 +11,9 @@
   {% if perms.agent.view_agentexecution %}
   <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-secondary">Auditoria do Agent</div><p class="mt-2 mb-2">Execuções, Tools e bloqueios observáveis.</p><a href="{% url 'web:agent_audit_list' %}">Abrir auditoria</a></div></div></div>
   {% endif %}
-  <div class="col-md-4"><div class="card border-secondary h-100"><div class="card-body"><div class="text-secondary">Configuração de IA</div><p class="mb-0 mt-2">Disponível em uma fase futura. Nenhuma credencial é armazenada aqui.</p></div></div></div>
+  {% if perms.agent.configure_ai %}
+  <div class="col-md-4"><div class="card shadow-sm h-100"><div class="card-body"><div class="text-secondary">Configuração da IA</div><p class="mt-2 mb-2">Provider e modelo usados pelo Agent.</p><a href="{% url 'web:ai_configuration' %}">Abrir configuração</a></div></div></div>
+  {% endif %}
 </div>
 {% if perms.agent.view_agentexecution %}
 <div class="row g-4">

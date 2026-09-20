@@ -2,3 +2,22 @@ body { min-height: 100vh; }
 .card { border: 0; }
 .table > :not(caption) > * > * { padding: .85rem; }
 dl dt { color: #6c757d; }
+
+.login-shell {
+  min-height: calc(100vh - 10rem);
+}
+
+.login-card {
+  width: min(100%, 28rem);
+}
+
+.agent-history {
+  min-height: 24rem;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.agent-message {
+  max-width: 85%;
+  white-space: pre-wrap;
+}

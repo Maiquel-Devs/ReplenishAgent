@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Agent | ReplenishAgent{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-xl-9">
+    <div class="mb-3">
+      <h1 class="h3 mb-1">ReplenishAgent</h1>
+      <p class="text-secondary mb-0">Assistente para análise e planejamento de reposição.</p>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body agent-history p-3 p-md-4" aria-live="polite">
+        {% for item in conversation %}
+          <div class="d-flex mb-3 {% if item.role == 'user' %}justify-content-end{% endif %}">
+            <div class="agent-message rounded-3 p-3 {% if item.role == 'user' %}bg-primary text-white{% else %}bg-body-secondary{% endif %}">
+              <div class="small fw-semibold mb-1">{% if item.role == 'user' %}Você{% else %}Agent{% endif %}</div>
+              {{ item.content }}
+            </div>
+          </div>
+        {% empty %}
+          <div class="h-100 d-flex align-items-center justify-content-center text-center text-secondary">
+            <div>
+              <p class="mb-1 fw-semibold">Como posso ajudar?</p>
+              <p class="small mb-0">A conexão com um provider real ainda não está habilitada.</p>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="card-footer bg-white border-top p-3">
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <label class="visually-hidden" for="{{ form.message.id_for_label }}">{{ form.message.label }}</label>
+          <div class="d-flex gap-2 align-items-start">
+            <div class="flex-grow-1">
+              {{ form.message }}
+              {% for error in form.message.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+            </div>
+            <button class="btn btn-primary px-4" type="submit">Enviar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

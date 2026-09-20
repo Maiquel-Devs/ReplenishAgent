@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import os
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -16,6 +17,7 @@ from apps.purchasing.services import (
 )
 
 from .authorization import (
+    CONFIGURE_AI_PERMISSION,
     REVIEW_PROPOSAL_PERMISSION,
     VIEW_AGENT_AUDIT_PERMISSION,
     administration_required,
@@ -34,11 +36,43 @@ def administration_overview(request: HttpRequest) -> HttpResponse:
         "recent_problem_tools": (
             AgentToolExecution.objects.exclude(
                 status=ToolExecutionStatus.EXECUTED.value
-            )
-            .select_related("execution", "execution__user")[:5]
+            ).select_related("execution", "execution__user")[:5]
         ),
     }
     return render(request, "web/admin/overview.html", context)
+
+
+def _provider_configuration() -> dict:
+    configured_provider = os.environ.get("LLM_PROVIDER", "ollama").strip().lower()
+    providers = (
+        {
+            "key": "ollama",
+            "label": "Ollama",
+            "model": os.environ.get("OLLAMA_MODEL", ""),
+        },
+        {
+            "key": "mistral",
+            "label": "Mistral",
+            "model": os.environ.get("MISTRAL_MODEL", ""),
+        },
+    )
+    current = next(
+        (provider for provider in providers if provider["key"] == configured_provider),
+        {"key": configured_provider, "label": configured_provider, "model": ""},
+    )
+    return {
+        "current_provider": current,
+        "providers": providers,
+    }
+
+
+@permission_required(CONFIGURE_AI_PERMISSION)
+def ai_configuration(request: HttpRequest) -> HttpResponse:
+    return render(
+        request,
+        "web/admin/ai_configuration.html",
+        _provider_configuration(),
+    )
 
 
 @permission_required(REVIEW_PROPOSAL_PERMISSION)

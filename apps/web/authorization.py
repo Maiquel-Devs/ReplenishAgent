@@ -17,9 +17,11 @@ ADD_STOCK_MOVEMENT_PERMISSION = "inventory.add_stockmovement"
 ADD_PURCHASE_PROPOSAL_PERMISSION = "purchasing.add_purchaseproposal"
 REVIEW_PROPOSAL_PERMISSION = "purchasing.review_purchaseproposal"
 VIEW_AGENT_AUDIT_PERMISSION = "agent.view_agentexecution"
+CONFIGURE_AI_PERMISSION = "agent.configure_ai"
 ADMINISTRATION_PERMISSIONS = (
     REVIEW_PROPOSAL_PERMISSION,
     VIEW_AGENT_AUDIT_PERMISSION,
+    CONFIGURE_AI_PERMISSION,
 )
 
 

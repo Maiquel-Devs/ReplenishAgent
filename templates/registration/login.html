@@ -1,5 +1,56 @@
 {% extends "base.html" %}
 {% block title %}Entrar | ReplenishAgent{% endblock %}
 {% block content %}
-<div class="row justify-content-center"><div class="col-md-5"><div class="card shadow-sm"><div class="card-body p-4"><h1 class="h4 mb-3">Entrar</h1><form method="post">{% csrf_token %}{{ form.as_p }}{% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}<button class="btn btn-primary" type="submit">Entrar</button></form></div></div></div></div>
+<div class="login-shell d-flex align-items-center justify-content-center">
+  <div class="card login-card shadow">
+    <div class="card-body p-4 p-md-5">
+      <div class="text-center mb-4">
+        <h1 class="h3 mb-2">ReplenishAgent</h1>
+        <p class="text-secondary mb-0">Análise e planejamento seguro de reposição.</p>
+      </div>
+
+      {% if login_blocked %}
+        <div class="alert alert-warning small" role="alert">
+          Não foi possível entrar. Aguarde alguns minutos antes de tentar novamente.
+        </div>
+      {% elif form.non_field_errors %}
+        <div class="alert alert-danger small" role="alert">
+          Não foi possível entrar com as credenciais informadas.
+        </div>
+      {% endif %}
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="mb-3">
+          <label class="form-label" for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+          {{ form.username }}
+        </div>
+        <div class="mb-4">
+          <label class="form-label" for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
+          {{ form.password }}
+        </div>
+        {% if next %}
+          <input type="hidden" name="next" value="{{ next }}">
+        {% endif %}
+        <button class="btn btn-primary w-100" type="submit">Entrar</button>
+      </form>
+
+      {% if demo_credentials %}
+        <section class="bg-body-tertiary border rounded-3 mt-4 p-3 text-secondary small" aria-labelledby="demo-credentials-title">
+          <h2 class="h6 text-body mb-2" id="demo-credentials-title">Credenciais de Demonstração:</h2>
+          <ul class="list-unstyled mb-0">
+            {% for credential in demo_credentials %}
+              <li{% if not forloop.last %} class="mb-1"{% endif %}>
+                <span aria-hidden="true">•</span>
+                <strong>{{ credential.label }}:</strong>
+                <code>{{ credential.username }} / {{ credential.password }}</code>
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+    </div>
+  </div>
+</div>
 {% endblock %}
+{% block footer %}{% endblock %}

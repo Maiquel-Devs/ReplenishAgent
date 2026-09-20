@@ -39,6 +39,7 @@ class AgentExecution(models.Model):
         ]
         permissions = [
             ("execute_agent_write", "Can execute Agent write tools"),
+            ("configure_ai", "Can view and configure AI settings"),
         ]
 
     def __str__(self) -> str:

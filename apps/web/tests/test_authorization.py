@@ -107,11 +107,12 @@ def test_proposal_creation_rejects_get_and_requires_permission(client, catalog):
         "planning_days": 30,
     }
 
-    assert client.get(url).status_code == 405
+    assert client.get(url).status_code == 302
     assert client.post(url, payload).status_code == 302
     assert PurchaseProposal.objects.count() == 0
 
     client.force_login(get_user_model().objects.create_user(username="plain-proposal"))
+    assert client.get(url).status_code == 405
     assert client.post(url, payload).status_code == 403
     assert PurchaseProposal.objects.count() == 0
 

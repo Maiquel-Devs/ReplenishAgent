@@ -14,6 +14,7 @@ from apps.purchasing.services import create_purchase_proposal
 from apps.replenishment.services import analyze_replenishment
 from apps.suppliers.models import ProductSupplier, Supplier
 
+from .agent_service import run_preview_agent
 from .authorization import (
     ADD_PRODUCT_PERMISSION,
     ADD_PRODUCT_SUPPLIER_PERMISSION,
@@ -25,12 +26,16 @@ from .authorization import (
     permission_required,
 )
 from .forms import (
+    AgentMessageForm,
     ProductForm,
     ProductSupplierForm,
     ReplenishmentRequestForm,
     StockMovementForm,
     SupplierForm,
 )
+
+AGENT_HISTORY_SESSION_KEY = "agent_conversation"
+AGENT_HISTORY_LIMIT = 20
 
 
 def _domain_error_message(error: ValidationError) -> str:
@@ -50,6 +55,32 @@ def _products_with_stock():
             Value(0),
             output_field=IntegerField(),
         )
+    )
+
+
+def agent_chat(request: HttpRequest) -> HttpResponse:
+    form = AgentMessageForm(request.POST or None)
+    history = request.session.get(AGENT_HISTORY_SESSION_KEY, [])
+
+    if request.method == "POST" and form.is_valid():
+        user_message = form.cleaned_data["message"]
+        response = run_preview_agent(user=request.user, message=user_message)
+        history.extend(
+            (
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": response},
+            )
+        )
+        request.session[AGENT_HISTORY_SESSION_KEY] = history[-AGENT_HISTORY_LIMIT:]
+        return redirect("web:agent_chat")
+
+    return render(
+        request,
+        "web/agent_chat.html",
+        {
+            "form": form,
+            "conversation": history,
+        },
     )
 
 
@@ -117,7 +148,12 @@ def product_update(request: HttpRequest, pk: int) -> HttpResponse:
     return render(
         request,
         "web/model_form.html",
-        {"form": form, "title": "Editar produto", "cancel_url": "web:product_detail", "cancel_pk": pk},
+        {
+            "form": form,
+            "title": "Editar produto",
+            "cancel_url": "web:product_detail",
+            "cancel_pk": pk,
+        },
     )
 
 
@@ -159,7 +195,12 @@ def supplier_update(request: HttpRequest, pk: int) -> HttpResponse:
     return render(
         request,
         "web/model_form.html",
-        {"form": form, "title": "Editar fornecedor", "cancel_url": "web:supplier_detail", "cancel_pk": pk},
+        {
+            "form": form,
+            "title": "Editar fornecedor",
+            "cancel_url": "web:supplier_detail",
+            "cancel_pk": pk,
+        },
     )
 
 
@@ -222,9 +263,7 @@ def movement_create(request: HttpRequest) -> HttpResponse:
             form.add_error(None, _domain_error_message(error))
         else:
             movement_label = (
-                "Entrada"
-                if data["movement_type"] == StockMovement.Type.IN
-                else "Saída"
+                "Entrada" if data["movement_type"] == StockMovement.Type.IN else "Saída"
             )
             messages.success(
                 request,

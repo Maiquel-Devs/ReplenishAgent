@@ -54,6 +54,21 @@ def auditor():
 
 
 @pytest.fixture
+def ai_administrator():
+    user = get_user_model().objects.create_user(
+        username="ai-administrator",
+        password="password",
+    )
+    user.user_permissions.add(
+        Permission.objects.get(
+            codename="configure_ai",
+            content_type__app_label="agent",
+        )
+    )
+    return user
+
+
+@pytest.fixture
 def proposal():
     product = Product.objects.create(name="Admin product", sku="ADMIN-001")
     supplier = Supplier.objects.create(name="Admin supplier")
@@ -100,6 +115,7 @@ def execution(auditor):
         "web:administration_overview",
         "web:pending_proposals",
         "web:agent_audit_list",
+        "web:ai_configuration",
     ],
 )
 def test_administration_requires_login(client, url_name):
@@ -115,6 +131,7 @@ def test_authenticated_user_without_permission_gets_forbidden(client, plain_user
     assert client.get(reverse("web:administration_overview")).status_code == 403
     assert client.get(reverse("web:pending_proposals")).status_code == 403
     assert client.get(reverse("web:agent_audit_list")).status_code == 403
+    assert client.get(reverse("web:ai_configuration")).status_code == 403
 
 
 def test_administration_navigation_is_hidden_without_permission(
@@ -135,6 +152,50 @@ def test_authorized_user_sees_administration_navigation(client, reviewer):
 
     assert response.status_code == 200
     assert "Administração" in response.content.decode()
+
+
+def test_reviewer_cannot_access_ai_configuration_directly(client, reviewer):
+    client.force_login(reviewer)
+
+    response = client.get(reverse("web:ai_configuration"))
+
+    assert response.status_code == 403
+
+
+def test_ai_administrator_can_access_custom_administration(
+    client,
+    ai_administrator,
+):
+    client.force_login(ai_administrator)
+
+    overview = client.get(reverse("web:administration_overview"))
+    configuration = client.get(reverse("web:ai_configuration"))
+
+    assert overview.status_code == 200
+    assert "Configuração da IA" in overview.content.decode()
+    assert configuration.status_code == 200
+
+
+def test_ai_configuration_shows_provider_and_model_without_credentials(
+    client,
+    ai_administrator,
+    monkeypatch,
+):
+    monkeypatch.setenv("LLM_PROVIDER", "mistral")
+    monkeypatch.setenv("MISTRAL_MODEL", "configured-model")
+    monkeypatch.setenv("MISTRAL_API_KEY", "must-not-be-rendered")
+    client.force_login(ai_administrator)
+
+    response = client.get(reverse("web:ai_configuration"))
+    content = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Ollama" in content
+    assert "Mistral" in content
+    assert "configured-model" in content
+    assert "must-not-be-rendered" not in content
+    assert 'name="api_key"' not in content
+    assert "Salvar configuração" not in content
 
 
 def test_reviewer_sees_pending_proposals(client, reviewer, proposal):
