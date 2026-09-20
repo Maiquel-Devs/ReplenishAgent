@@ -4,7 +4,6 @@ from unittest.mock import patch
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.contrib.auth.models import Permission
 from django.urls import reverse
 
 from apps.inventory.models import Inventory, StockMovement
@@ -17,6 +16,7 @@ from apps.purchasing.services import (
 )
 from apps.replenishment.calculations import ReplenishmentAnalysis, RiskLevel
 from apps.suppliers.models import ProductSupplier, Supplier
+from apps.web.templatetags.formatting import brl
 
 
 
@@ -37,7 +37,6 @@ def authorized_state_change_client(client):
         )
     )
     client.force_login(user)
-from apps.web.templatetags.formatting import brl
 pytestmark = pytest.mark.django_db
 
 @pytest.fixture

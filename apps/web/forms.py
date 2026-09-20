@@ -1,6 +1,5 @@
 from django import forms
 
-from apps.inventory.models import StockMovement
 from apps.products.models import Product
 from apps.suppliers.models import ProductSupplier, Supplier
 

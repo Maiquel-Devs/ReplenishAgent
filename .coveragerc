@@ -1,0 +1,16 @@
+[run]
+branch = True
+source =
+    apps
+    config
+
+[report]
+fail_under = 90
+show_missing = True
+omit =
+    */admin.py
+    */apps.py
+    */asgi.py
+    */migrations/*
+    */tests/*
+    */wsgi.py

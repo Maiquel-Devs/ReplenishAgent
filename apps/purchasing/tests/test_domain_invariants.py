@@ -4,7 +4,6 @@ from decimal import Decimal
 from dataclasses import replace
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.db.models import ProtectedError
 from django.core.exceptions import ValidationError
 

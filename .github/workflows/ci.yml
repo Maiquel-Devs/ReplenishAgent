@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: replenish_agent_ci
+          POSTGRES_USER: replenish_agent_ci
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U replenish_agent_ci -d replenish_agent_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DJANGO_SECRET_KEY: ci-only-not-for-production
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      POSTGRES_DB: replenish_agent_ci
+      POSTGRES_USER: replenish_agent_ci
+      POSTGRES_PASSWORD: ci-only-password
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: Check migrations
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Apply migrations
+        run: python manage.py migrate --noinput
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Tests with branch coverage
+        run: |
+          coverage run -m pytest
+          coverage report
+
+      - name: Configure Docker smoke environment
+        run: |
+          printf '%s\n' \
+            'DJANGO_SECRET_KEY=ci-only-not-for-production' \
+            'DJANGO_DEBUG=False' \
+            'DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1' \
+            'POSTGRES_DB=replenish_agent_ci' \
+            'POSTGRES_USER=replenish_agent_ci' \
+            'POSTGRES_PASSWORD=ci-only-password' \
+            'POSTGRES_HOST=db' \
+            'POSTGRES_PORT=5432' > .env
+
+      - name: Build Docker image
+        run: docker compose build
+
+      - name: Start Docker Compose
+        run: docker compose up -d --no-build --wait --wait-timeout 90
+        id: compose_start
+
+      - name: Health check
+        run: curl --fail --show-error http://localhost:8000/health/
+
+      - name: Stop Docker Compose
+        if: ${{ always() && steps.compose_start.outcome != 'skipped' }}
+        run: docker compose down --volumes
