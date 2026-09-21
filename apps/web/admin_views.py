@@ -5,11 +5,23 @@ import os
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.http import HttpRequest, HttpResponse, HttpResponseNotAllowed
+from django.http import (
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseNotAllowed,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 
 from apps.agent.audit import ToolExecutionStatus
-from apps.agent.models import AgentExecution, AgentToolExecution
+from apps.agent.configuration import (
+    configuration_status,
+    discover_ollama_models,
+    current_ai_configuration,
+    save_ai_configuration,
+)
+from apps.agent.models import AIConfigurationChange, AgentExecution, AgentToolExecution
+from apps.agent.providers.base import LLMProviderError
 from apps.purchasing.models import PurchaseProposal
 from apps.purchasing.services import (
     approve_purchase_proposal,
@@ -23,6 +35,7 @@ from .authorization import (
     administration_required,
     permission_required,
 )
+from .ai_forms import AIConfigurationForm, OllamaConnectionForm
 from .views import _domain_error_message
 
 
@@ -42,36 +55,68 @@ def administration_overview(request: HttpRequest) -> HttpResponse:
     return render(request, "web/admin/overview.html", context)
 
 
-def _provider_configuration() -> dict:
-    configured_provider = os.environ.get("LLM_PROVIDER", "ollama").strip().lower()
-    providers = (
-        {
-            "key": "ollama",
-            "label": "Ollama",
-            "model": os.environ.get("OLLAMA_MODEL", ""),
-        },
-        {
-            "key": "mistral",
-            "label": "Mistral",
-            "model": os.environ.get("MISTRAL_MODEL", ""),
-        },
-    )
-    current = next(
-        (provider for provider in providers if provider["key"] == configured_provider),
-        {"key": configured_provider, "label": configured_provider, "model": ""},
-    )
-    return {
-        "current_provider": current,
-        "providers": providers,
-    }
-
-
 @permission_required(CONFIGURE_AI_PERMISSION)
 def ai_configuration(request: HttpRequest) -> HttpResponse:
+    configuration = current_ai_configuration()
+    probe_result = None
+    available_models = ()
+    if request.method == "POST":
+        form = AIConfigurationForm(request.POST, instance=configuration)
+        action = request.POST.get("action", "save")
+        if action == "save":
+            if form.is_valid():
+                save_ai_configuration(form.save(commit=False), user=request.user)
+                messages.success(request, "Configuração da IA salva.")
+                return redirect("web:ai_configuration")
+        elif action == "test":
+            probe_form = OllamaConnectionForm(request.POST)
+            if probe_form.is_valid():
+                try:
+                    available_models = discover_ollama_models(
+                        probe_form.cleaned_data["local_endpoint"]
+                    )
+                except LLMProviderError:
+                    probe_result = {
+                        "ok": False,
+                        "message": "Não foi possível conectar ao Ollama ou consultar os modelos.",
+                    }
+                else:
+                    count = len(available_models)
+                    model_label = (
+                        "modelo disponível" if count == 1 else "modelos disponíveis"
+                    )
+                    probe_result = {
+                        "ok": True,
+                        "message": f"Ollama conectado. {count} {model_label}.",
+                    }
+            else:
+                first_error = next(iter(probe_form.errors.values()))[0]
+                probe_result = {"ok": False, "message": first_error}
+        else:
+            return HttpResponseBadRequest("Ação inválida.")
+    elif request.method == "GET":
+        form = AIConfigurationForm(
+            instance=configuration,
+            initial={"type": "LOCAL", "integration": "ollama", "is_active": True}
+            if configuration is None
+            else None,
+        )
+    else:
+        return HttpResponseNotAllowed(["GET", "POST"])
     return render(
         request,
         "web/admin/ai_configuration.html",
-        _provider_configuration(),
+        {
+            "form": form,
+            "configuration": configuration,
+            "configuration_status": configuration_status(configuration),
+            "credential_configured": bool(
+                os.environ.get("MISTRAL_API_KEY", "").strip()
+            ),
+            "recent_changes": AIConfigurationChange.objects.select_related("user")[:5],
+            "probe_result": probe_result,
+            "available_models": available_models,
+        },
     )
 
 

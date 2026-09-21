@@ -14,7 +14,11 @@ from apps.purchasing.services import create_purchase_proposal
 from apps.replenishment.services import analyze_replenishment
 from apps.suppliers.models import ProductSupplier, Supplier
 
-from .agent_service import run_preview_agent
+from apps.agent.configuration import AIConfigurationError
+from apps.agent.core import AgentIterationLimitError
+from apps.agent.providers import LLMProviderError
+
+from .agent_service import run_agent
 from .authorization import (
     ADD_PRODUCT_PERMISSION,
     ADD_PRODUCT_SUPPLIER_PERMISSION,
@@ -64,15 +68,32 @@ def agent_chat(request: HttpRequest) -> HttpResponse:
 
     if request.method == "POST" and form.is_valid():
         user_message = form.cleaned_data["message"]
-        response = run_preview_agent(user=request.user, message=user_message)
-        history.extend(
-            (
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": response},
+        try:
+            response = run_agent(user=request.user, message=user_message)
+        except AIConfigurationError:
+            form.add_error(
+                None,
+                "A configuração da IA está ausente, inativa ou incompleta. Solicite a revisão ao administrador.",
             )
-        )
-        request.session[AGENT_HISTORY_SESSION_KEY] = history[-AGENT_HISTORY_LIMIT:]
-        return redirect("web:agent_chat")
+        except LLMProviderError:
+            form.add_error(
+                None,
+                "A IA configurada está indisponível no momento. Tente novamente mais tarde.",
+            )
+        except AgentIterationLimitError:
+            form.add_error(
+                None,
+                "A IA não concluiu a resposta. Tente novamente com uma mensagem mais específica.",
+            )
+        else:
+            history.extend(
+                (
+                    {"role": "user", "content": user_message},
+                    {"role": "assistant", "content": response},
+                )
+            )
+            request.session[AGENT_HISTORY_SESSION_KEY] = history[-AGENT_HISTORY_LIMIT:]
+            return redirect("web:agent_chat")
 
     return render(
         request,

@@ -247,7 +247,9 @@ def test_ollama_maps_connection_and_timeout_errors():
 
 def test_mistral_sends_messages_tools_and_configured_model():
     client = FakeMistralClient(mistral_response(content="Ready."))
-    provider = MistralProvider(api_key="test-key", model="mistral-configured", client=client)
+    provider = MistralProvider(
+        api_key="test-key", model="mistral-configured", client=client
+    )
 
     response = provider.generate(
         [LLMMessage(role="user", content="Check.")], [tool_definition()]
@@ -264,9 +266,7 @@ def test_mistral_normalizes_one_and_multiple_calls_preserving_ids():
     raw_calls = [
         SimpleNamespace(
             id="call-A",
-            function=SimpleNamespace(
-                name="first", arguments='{"product_id": 1}'
-            ),
+            function=SimpleNamespace(name="first", arguments='{"product_id": 1}'),
         ),
         SimpleNamespace(
             id="call-B",
@@ -349,13 +349,13 @@ def test_mistral_requires_api_key_only_when_constructed():
         MistralProvider(api_key="", model="model")
 
 
-def test_factory_builds_ollama_from_environment(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+def test_factory_builds_explicit_ollama_with_environment_endpoint(monkeypatch):
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://configured-ollama:11434")
-    monkeypatch.setenv("OLLAMA_MODEL", "llama-configured")
     monkeypatch.setenv("OLLAMA_TIMEOUT", "12")
 
-    provider = create_llm_provider(client=Mock())
+    provider = create_llm_provider(
+        provider="ollama", model="llama-configured", client=Mock()
+    )
 
     assert isinstance(provider, OllamaProvider)
     assert provider.model == "llama-configured"
@@ -393,6 +393,7 @@ def test_llm_message_tool_metadata_is_provider_independent_and_validated():
         LLMMessage(role="user", content="", tool_calls=(call,))
     with pytest.raises(ValueError, match="only valid for tool"):
         LLMMessage(role="user", content="", tool_call_id="call-1")
+
 
 @pytest.mark.parametrize(
     "kwargs",

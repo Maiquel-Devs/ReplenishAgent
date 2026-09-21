@@ -4,45 +4,133 @@
 <header class="page-header">
   <div>
     <h1 class="page-title">Configuração da IA</h1>
-    <p class="page-description">Provider e modelo preparados para o Agent.</p>
+    <p class="page-description">Selecione a infraestrutura e o modelo para o Agent.</p>
   </div>
   <a class="btn btn-outline-secondary" href="{% url 'web:administration_overview' %}">Voltar</a>
 </header>
 
-<div class="alert alert-info" role="status">
-  Esta etapa é somente informativa. Nenhuma API key é exibida ou armazenada e
-  nenhuma conexão com providers é realizada.
-</div>
+<div class="alert alert-info" role="status">{{ configuration_status }}</div>
 
-<section class="card mb-4" aria-labelledby="selected-provider-title">
-  <div class="card-body">
-    <h2 class="h5 mb-3" id="selected-provider-title">Configuração selecionada pelo ambiente</h2>
-    <dl class="row mb-0">
-      <dt class="col-sm-3">Provider</dt>
-      <dd class="col-sm-9">{{ current_provider.label|default:"Não configurado" }}</dd>
-      <dt class="col-sm-3">Modelo</dt>
-      <dd class="col-sm-9">{{ current_provider.model|default:"Não configurado" }}</dd>
-    </dl>
+<section class="card mb-4" aria-labelledby="ai-settings-title">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3" id="ai-settings-title">Infraestrutura</h2>
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>
+      {% endif %}
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="{{ form.type.id_for_label }}">{{ form.type.label }}</label>
+          {{ form.type }}
+          {% for error in form.type.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="{{ form.integration.id_for_label }}" id="integration-label">{{ form.integration.label }}</label>
+          {{ form.integration }}
+          {% for error in form.integration.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+        </div>
+        <div class="col-12" id="local-endpoint-fields">
+          <label class="form-label" for="{{ form.local_endpoint.id_for_label }}">{{ form.local_endpoint.label }}</label>
+          {{ form.local_endpoint }}
+          <div class="form-text">Informe somente a origem do runtime. Aceitos localhost, host.docker.internal ou IP privado.</div>
+          {% for error in form.local_endpoint.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="{{ form.model.id_for_label }}">{{ form.model.label }}</label>
+          {{ form.model }}
+          {% if available_models %}
+            <datalist id="ollama-models">
+              {% for model_name in available_models %}<option value="{{ model_name }}"></option>{% endfor %}
+            </datalist>
+            <div class="form-text">Escolha um modelo encontrado ou mantenha o identificador informado manualmente.</div>
+          {% else %}
+            <div class="form-text">Identificador informado manualmente. Testar conexão consulta os modelos instalados sem executar inferência.</div>
+          {% endif %}
+          {% for error in form.model.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+        </div>
+      </div>
+      <div class="form-check my-4">
+        {{ form.is_active }}
+        <label class="form-check-label" for="{{ form.is_active.id_for_label }}">{{ form.is_active.label }}</label>
+        {% for error in form.is_active.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+      </div>
+      <div class="alert alert-light border mb-4" data-integration-note="local">
+        O teste consulta apenas os modelos instalados. A configuração pode ser salva mesmo com o Ollama offline.
+      </div>
+      <div class="alert alert-light border mb-4" data-integration-note="cloud">
+        <strong>Credencial Mistral:</strong>
+        {% if credential_configured %}configurada pelo ambiente{% else %}não configurada{% endif %}.
+        A chave não é recebida nem exibida nesta página.
+      </div>
+      {% if probe_result %}
+        <div class="alert {% if probe_result.ok %}alert-success{% else %}alert-danger{% endif %}" role="{% if probe_result.ok %}status{% else %}alert{% endif %}">
+          {{ probe_result.message }}
+        </div>
+      {% endif %}
+      {% if probe_result.ok and not available_models %}
+        <p class="text-secondary">Nenhum modelo instalado foi informado pelo Ollama.</p>
+      {% endif %}
+      <div class="d-flex flex-wrap gap-2">
+        <button class="btn btn-outline-primary" type="submit" name="action" value="test" id="test-ollama-button">Testar conexão</button>
+        <button class="btn btn-primary" type="submit" name="action" value="save">Salvar configuração</button>
+      </div>
+    </form>
   </div>
 </section>
-
-<h2 class="h5 mb-3">Providers preparados</h2>
-<div class="row g-3">
-  {% for provider in providers %}
-    <div class="col-md-6">
-      <section class="card h-100{% if provider.key == current_provider.key %} metric-card metric-card-primary{% endif %}">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center gap-3">
-            <strong>{{ provider.label }}</strong>
-            {% if provider.key == current_provider.key %}
-              <span class="badge text-bg-primary">Selecionado</span>
-            {% endif %}
-          </div>
-          <div class="text-secondary small mt-3">Modelo</div>
-          <div>{{ provider.model|default:"Ainda não configurado" }}</div>
-        </div>
-      </section>
-    </div>
-  {% endfor %}
-</div>
+<section class="card mb-4" aria-labelledby="ai-changes-title">
+  <div class="card-body">
+    <h2 class="h6" id="ai-changes-title">Alterações recentes</h2>
+    <ul class="list-group list-group-flush">
+      {% for change in recent_changes %}
+        <li class="list-group-item px-0">
+          {{ change.changed_at|date:"d/m/Y H:i" }} ·
+          {{ change.user|default:"Usuário removido" }} ·
+          {{ change.type }} / {{ change.integration }} ·
+          {% if change.is_active %}ativa{% else %}inativa{% endif %}
+        </li>
+      {% empty %}
+        <li class="list-group-item px-0 text-secondary">Nenhuma alteração registrada.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% if configuration %}
+<p class="text-secondary small">Última atualização: {{ configuration.updated_at|date:"d/m/Y H:i" }}</p>
+{% endif %}
+<script>
+(() => {
+  const type = document.getElementById("id_type");
+  const integration = document.getElementById("id_integration");
+  const endpoint = document.getElementById("id_local_endpoint");
+  const endpointFields = document.getElementById("local-endpoint-fields");
+  const testButton = document.getElementById("test-ollama-button");
+  const model = document.getElementById("id_model");
+  const label = document.getElementById("integration-label");
+  if (!type || !integration || !label || !endpoint) return;
+  const notes = document.querySelectorAll("[data-integration-note]");
+  const options = Array.from(integration.options);
+  const refresh = () => {
+    const local = type.value === "LOCAL";
+    const allowed = local ? "ollama" : "mistral";
+    label.textContent = local ? "Runtime" : "Provider";
+    for (const option of options) {
+      if (option.value) option.hidden = option.value !== allowed;
+    }
+    if (integration.value !== allowed) integration.value = allowed;
+    endpointFields.hidden = !local;
+    endpoint.disabled = !local;
+    testButton.hidden = !local;
+    if (model) {
+      if (local && document.getElementById("ollama-models")) model.setAttribute("list", "ollama-models");
+      else model.removeAttribute("list");
+    }
+    for (const note of notes) {
+      note.hidden = note.dataset.integrationNote !== (local ? "local" : "cloud");
+    }
+  };
+  type.addEventListener("change", refresh);
+  refresh();
+})();
+</script>
 {% endblock %}

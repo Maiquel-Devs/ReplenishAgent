@@ -7,7 +7,7 @@
       <h1 class="page-title"><span class="agent-identity" aria-hidden="true">✦</span> Agent</h1>
       <p class="page-description">Assistente para análise e planejamento de reposição.</p>
     </div>
-    <span class="badge text-bg-secondary">Modo de demonstração</span>
+
   </header>
 
   <section class="card agent-panel" aria-label="Conversa com o Agent">
@@ -23,7 +23,7 @@
         <div class="h-100 d-flex align-items-center justify-content-center text-center">
           <div class="empty-state">
             <p class="mb-1 fw-semibold text-body">Como posso ajudar?</p>
-            <p class="small mb-0">A conexão com um provider real ainda não está habilitada.</p>
+            <p class="small mb-0">Envie uma mensagem para começar a conversa.</p>
           </div>
         </div>
       {% endfor %}
@@ -31,6 +31,9 @@
     <div class="card-footer p-3">
       <form method="post" novalidate>
         {% csrf_token %}
+        {% for error in form.non_field_errors %}
+          <div class="alert alert-danger" role="alert">{{ error }}</div>
+        {% endfor %}
         <label class="visually-hidden" for="{{ form.message.id_for_label }}">{{ form.message.label }}</label>
         <div class="d-flex flex-column flex-sm-row gap-2 align-items-stretch align-items-sm-start">
           <div class="flex-grow-1">

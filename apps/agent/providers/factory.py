@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from django.core.exceptions import ValidationError
+
 from .base import LLMProvider
 from .mistral import MistralProvider
 from .ollama import OllamaProvider
@@ -13,37 +15,49 @@ def create_llm_provider(
     model: str | None = None,
     **overrides: Any,
 ) -> LLMProvider:
-    """Build the configured adapter while keeping provider and model separate."""
-    provider_name = (
-        provider or os.environ.get("LLM_PROVIDER", "ollama")
-    ).strip().lower()
+    """Build the persisted selection or an explicit test/development override."""
+    from apps.agent.configuration import AIConfigurationError, current_ai_configuration
 
+    using_persisted = provider is None and model is None
+    if using_persisted:
+        configuration = current_ai_configuration()
+        if configuration is None:
+            raise AIConfigurationError("No AI configuration has been saved.")
+        if not configuration.is_active:
+            raise AIConfigurationError("The AI configuration is inactive.")
+        try:
+            configuration.full_clean()
+        except ValidationError as exc:
+            raise AIConfigurationError("The AI configuration is invalid.") from exc
+        provider, model = configuration.integration, configuration.model
+    elif not provider or not model:
+        raise AIConfigurationError("Provider and model must be specified together.")
+
+    provider_name = provider.strip().lower()
     if provider_name == "ollama":
-        configured_model = model or os.environ.get("OLLAMA_MODEL", "")
-        raw_timeout = overrides.pop(
-            "timeout", os.environ.get("OLLAMA_TIMEOUT", "30")
-        )
+        raw_timeout = overrides.pop("timeout", os.environ.get("OLLAMA_TIMEOUT", "30"))
         try:
             timeout = float(raw_timeout)
         except (TypeError, ValueError) as exc:
-            raise ValueError("OLLAMA_TIMEOUT must be a number.") from exc
+            raise AIConfigurationError("OLLAMA_TIMEOUT must be a number.") from exc
+        if using_persisted:
+            if "base_url" in overrides:
+                raise AIConfigurationError(
+                    "Endpoint override requires explicit provider and model."
+                )
+            base_url = configuration.local_endpoint
+        else:
+            base_url = overrides.pop("base_url", os.environ.get("OLLAMA_BASE_URL", ""))
+        if not base_url.strip():
+            raise AIConfigurationError("OLLAMA_BASE_URL is not configured.")
         return OllamaProvider(
-            base_url=overrides.pop(
-                "base_url", os.environ.get("OLLAMA_BASE_URL", "")
-            ),
-            model=configured_model,
-            timeout=timeout,
-            **overrides,
+            base_url=base_url, model=model, timeout=timeout, **overrides
         )
 
     if provider_name == "mistral":
-        configured_model = model or os.environ.get("MISTRAL_MODEL", "")
-        return MistralProvider(
-            api_key=overrides.pop(
-                "api_key", os.environ.get("MISTRAL_API_KEY", "")
-            ),
-            model=configured_model,
-            **overrides,
-        )
+        api_key = overrides.pop("api_key", os.environ.get("MISTRAL_API_KEY", ""))
+        if not api_key.strip():
+            raise AIConfigurationError("MISTRAL_API_KEY is not configured.")
+        return MistralProvider(api_key=api_key, model=model, **overrides)
 
-    raise ValueError(f"Unknown LLM provider: {provider_name!r}.")
+    raise AIConfigurationError(f"Unknown LLM provider: {provider_name!r}.")

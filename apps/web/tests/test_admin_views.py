@@ -181,9 +181,12 @@ def test_ai_configuration_shows_provider_and_model_without_credentials(
     ai_administrator,
     monkeypatch,
 ):
-    monkeypatch.setenv("LLM_PROVIDER", "mistral")
-    monkeypatch.setenv("MISTRAL_MODEL", "configured-model")
-    monkeypatch.setenv("MISTRAL_API_KEY", "must-not-be-rendered")
+    from apps.agent.models import AIConfiguration
+
+    AIConfiguration.objects.create(
+        type="CLOUD", integration="mistral", model="configured-model"
+    )
+    monkeypatch.setenv("MISTRAL_API_KEY", "synthetic-test-value")
     client.force_login(ai_administrator)
 
     response = client.get(reverse("web:ai_configuration"))
@@ -193,9 +196,9 @@ def test_ai_configuration_shows_provider_and_model_without_credentials(
     assert "Ollama" in content
     assert "Mistral" in content
     assert "configured-model" in content
-    assert "must-not-be-rendered" not in content
+    assert "synthetic-test-value" not in content
     assert 'name="api_key"' not in content
-    assert "Salvar configuração" not in content
+    assert "Salvar configuração" in content
 
 
 def test_reviewer_sees_pending_proposals(client, reviewer, proposal):
@@ -282,9 +285,10 @@ def test_audit_pages_require_specific_permission(client, reviewer, execution):
     client.force_login(reviewer)
 
     assert client.get(reverse("web:agent_audit_list")).status_code == 403
-    assert client.get(
-        reverse("web:agent_audit_detail", args=[execution.pk])
-    ).status_code == 403
+    assert (
+        client.get(reverse("web:agent_audit_detail", args=[execution.pk])).status_code
+        == 403
+    )
 
 
 def test_auditor_can_list_and_view_execution_without_unescaped_llm_content(
@@ -295,9 +299,7 @@ def test_auditor_can_list_and_view_execution_without_unescaped_llm_content(
     client.force_login(auditor)
 
     listing = client.get(reverse("web:agent_audit_list"))
-    detail = client.get(
-        reverse("web:agent_audit_detail", args=[execution.pk])
-    )
+    detail = client.get(reverse("web:agent_audit_detail", args=[execution.pk]))
 
     assert listing.status_code == 200
     assert "FakeLLMProvider" in listing.content.decode()
