@@ -37,7 +37,6 @@ def product_relation():
     return product, relation
 
 
-
 def test_complete_stock_then_replenishment_flow(product_relation):
     product, relation = product_relation
     Inventory.objects.create(product=product, current_quantity=2)
@@ -152,3 +151,40 @@ def test_complete_write_enabled_proposal_flow_stays_pending(product_relation):
     ]
     proposal_result = json.loads(final_history[-1].content)
     assert proposal_result["data"]["status"] == "PENDING"
+
+
+def test_named_product_analysis_uses_deterministic_tool_without_write(product_relation):
+    product, _relation = product_relation
+    Inventory.objects.create(product=product, current_quantity=0)
+    provider = FakeLLMProvider(
+        [
+            LLMResponse(
+                tool_calls=(
+                    ToolCall(
+                        id="named-analysis",
+                        name="calcular_reposicao",
+                        arguments={
+                            "name": product.name,
+                            "product_supplier_id": None,
+                            "consumption_days": "30",
+                            "planning_days": "30",
+                        },
+                    ),
+                )
+            ),
+            LLMResponse(content="Reposição recomendada com base no cálculo."),
+        ]
+    )
+    answer = ReplenishAgent(
+        provider=provider, tools=create_default_tool_registry()
+    ).run("Analise a situação do produto.")
+
+    result = json.loads(provider.calls[1].messages[-1].content)
+    assert answer == "Reposição recomendada com base no cálculo."
+    assert result["ok"] is True
+    assert result["data"]["current_stock"] == "0"
+    assert result["data"]["recommended_quantity"] == "5"
+    assert PurchaseProposal.objects.count() == 0
+    assert [
+        message.tool_name for message in provider.calls[1].messages if message.tool_name
+    ] == ["calcular_reposicao"]

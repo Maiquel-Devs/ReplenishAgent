@@ -69,8 +69,9 @@ def test_agent_returns_direct_text_response():
 def test_agent_executes_tool_and_returns_final_text():
     executed = []
     tool = make_tool(
-        handler=lambda arguments, context: executed.append(arguments["value"])
-        or {"found": True}
+        handler=lambda arguments, context: (
+            executed.append(arguments["value"]) or {"found": True}
+        )
     )
     answer, provider = run_tool_flow(
         ToolCall(id="call-1", name="lookup", arguments={"value": 7}),
@@ -305,3 +306,28 @@ def test_agent_validates_public_inputs_and_iteration_limit():
     agent = ReplenishAgent(provider=provider, tools=ToolRegistry())
     with pytest.raises(ValueError, match="non-empty"):
         agent.run(" ")
+
+
+def test_system_prompt_sets_tool_selection_boundaries():
+    assert "sem Tools" in SYSTEM_PROMPT
+    assert "READ" in SYSTEM_PROMPT
+    assert "COMPUTE" in SYSTEM_PROMPT
+    assert "WRITE somente" in SYSTEM_PROMPT
+    assert "Analisar ou recomendar compra não autoriza criar proposta" in SYSTEM_PROMPT
+    assert "aprovação humana" in SYSTEM_PROMPT
+
+
+def test_write_stays_blocked_without_user_permission_even_when_policy_allows():
+    executed = []
+    tool = make_tool(
+        permission=ToolPermission.WRITE,
+        handler=lambda arguments, context: executed.append(True) or {"saved": True},
+    )
+    _, provider = run_tool_flow(
+        ToolCall(id="write-unprivileged", name="lookup", arguments={"value": 1}),
+        ToolRegistry([tool]),
+        policy=ToolExecutionPolicy(allow_write=True),
+        context=ToolExecutionContext(user_id=1, is_authenticated=True),
+    )
+    assert executed == []
+    assert tool_result(provider)["error"]["code"] == "not_authorized"

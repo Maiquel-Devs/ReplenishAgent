@@ -62,9 +62,7 @@ def test_nested_schema_applies_defaults_and_validates_types():
     )
 
     assert result["ok"] is True
-    assert captured == [
-        {"count": 2, "mode": "safe", "options": {"enabled": True}}
-    ]
+    assert captured == [{"count": 2, "mode": "safe", "options": {"enabled": True}}]
 
 
 @pytest.mark.parametrize(
@@ -114,3 +112,82 @@ def test_internal_schema_error_is_sanitized():
             "message": "The tool could not be executed.",
         },
     }
+
+
+def test_optional_null_arguments_use_defaults_but_required_null_is_rejected():
+    from apps.agent.tools.base import ToolArgumentsError, validate_object
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "product_id": {"type": "integer"},
+            "days": {"type": "integer", "default": 30},
+        },
+        "required": ["name"],
+        "additionalProperties": False,
+    }
+    assert validate_object(
+        {"name": "Headset USB", "product_id": None, "days": None}, schema
+    ) == {"name": "Headset USB", "days": 30}
+    with pytest.raises(ToolArgumentsError):
+        validate_object({"name": None}, schema)
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["abc", "1.5", "-1", "1" * 30, "٣", True, 1.5],
+)
+def test_integer_argument_rejects_noncanonical_values(value):
+    from apps.agent.tools.base import ToolArgumentsError, validate_object
+
+    schema = {
+        "type": "object",
+        "properties": {"days": {"type": "integer", "minimum": 1, "maximum": 365}},
+        "required": ["days"],
+    }
+    with pytest.raises(ToolArgumentsError):
+        validate_object({"days": value}, schema)
+
+
+def test_integer_argument_accepts_ascii_digits_and_enforces_bounds():
+    from apps.agent.tools.base import ToolArgumentsError, validate_object
+
+    schema = {
+        "type": "object",
+        "properties": {"days": {"type": "integer", "minimum": 1, "maximum": 365}},
+        "required": ["days"],
+    }
+    assert validate_object({"days": "7"}, schema) == {"days": 7}
+    with pytest.raises(ToolArgumentsError):
+        validate_object({"days": "366"}, schema)
+
+
+def test_decimal_tool_output_uses_plain_not_scientific_notation():
+    from decimal import Decimal
+
+    from apps.agent.tools.base import json_safe
+
+    assert json_safe({"coverage": Decimal("0E+1")}) == {"coverage": "0"}
+
+
+def test_optional_integer_null_text_uses_default_without_accepting_required_null():
+    from apps.agent.tools.base import ToolArgumentsError, validate_object
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "relation_id": {"type": "integer"},
+            "days": {"type": "integer", "default": 30},
+        },
+        "required": ["name"],
+    }
+    assert validate_object(
+        {"name": "Headset USB", "relation_id": "null", "days": "null"}, schema
+    ) == {"name": "Headset USB", "days": 30}
+    with pytest.raises(ToolArgumentsError):
+        validate_object(
+            {"name": "Headset USB", "relation_id": "null", "days": "null"},
+            {**schema, "required": ["name", "relation_id"]},
+        )

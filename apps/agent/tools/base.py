@@ -59,10 +59,7 @@ class ToolExecutionPolicy:
         if permission in (ToolPermission.READ, ToolPermission.COMPUTE):
             return True
         if permission is ToolPermission.WRITE:
-            return (
-                self.allow_write
-                and context.has_permission(self.write_permission)
-            )
+            return self.allow_write and context.has_permission(self.write_permission)
         return False
 
 
@@ -158,8 +155,18 @@ def validate_object(
 
     validated = {}
     for name, property_schema in properties.items():
-        if name in arguments:
-            validated[name] = _validate_value(name, arguments[name], property_schema)
+        value = arguments.get(name)
+        unset_integer = (
+            isinstance(property_schema, Mapping)
+            and property_schema.get("type") == "integer"
+            and isinstance(value, str)
+            and value.lower() == "null"
+        )
+        supplied = name in arguments and (
+            name in required or (value is not None and not unset_integer)
+        )
+        if supplied:
+            validated[name] = _validate_value(name, value, property_schema)
         elif isinstance(property_schema, Mapping) and "default" in property_schema:
             validated[name] = property_schema["default"]
     return validated
@@ -169,12 +176,16 @@ def _validate_value(name: str, value: Any, schema: Mapping[str, Any]) -> Any:
     expected = schema.get("type")
     valid = True
     if expected == "integer":
+        if (
+            isinstance(value, str)
+            and value.isascii()
+            and value.isdigit()
+            and len(value) <= 18
+        ):
+            value = int(value)
         valid = isinstance(value, int) and not isinstance(value, bool)
     elif expected == "number":
-        valid = (
-            isinstance(value, (int, float, Decimal))
-            and not isinstance(value, bool)
-        )
+        valid = isinstance(value, (int, float, Decimal)) and not isinstance(value, bool)
     elif expected == "string":
         valid = isinstance(value, str)
     elif expected == "boolean":
@@ -205,7 +216,7 @@ def json_safe(value: Any) -> Any:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, Decimal):
-        return str(value)
+        return format(value, "f")
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     if isinstance(value, Mapping):

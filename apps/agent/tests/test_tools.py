@@ -151,7 +151,7 @@ def test_consultar_movimentacoes_applies_default_limit_and_serializes_dates(
     assert_json_serializable(result)
 
 
-@pytest.mark.parametrize("limit", [0, 51, "10", True])
+@pytest.mark.parametrize("limit", [0, 51, "ten", True])
 def test_consultar_movimentacoes_rejects_invalid_limits(
     registry,
     product,
@@ -355,3 +355,127 @@ def test_unexpected_arguments_are_rejected_before_database_access(
         )
 
     assert result["error"]["code"] == "invalid_arguments"
+
+
+def test_consultar_produto_finds_name_without_guessing_id(registry, product):
+    result = execute(registry, "consultar_produto", {"name": " cafe especial "})
+    assert result["ok"] is True
+    assert result["data"]["id"] == product.pk
+    assert result["data"]["name"] == product.name
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {},
+        {"name": " "},
+        {"name": "x" * 256},
+        {"name": "Cafe especial", "product_id": 1},
+    ],
+)
+def test_consultar_produto_requires_exactly_one_valid_identifier(registry, arguments):
+    result = execute(registry, "consultar_produto", arguments)
+    assert result["error"]["code"] == "invalid_arguments"
+
+
+def test_consultar_produto_rejects_ambiguous_or_unknown_names(registry, product):
+    missing = execute(registry, "consultar_produto", {"name": "Inexistente"})
+    assert missing["error"]["code"] == "resource_not_found"
+    Product.objects.create(name="CAFE ESPECIAL", sku="AGENT-002")
+    ambiguous = execute(registry, "consultar_produto", {"name": "Cafe especial"})
+    assert ambiguous["error"]["code"] == "domain_error"
+
+
+def test_tool_definitions_explain_read_compute_and_write_boundaries(registry):
+    definitions = {item.name: item for item in registry.definitions()}
+    assert "nome" in definitions["consultar_produto"].description
+    assert "name" in definitions["consultar_produto"].parameters["properties"]
+    assert "READ" in definitions["consultar_estoque"].description
+    assert "COMPUTE" in definitions["calcular_reposicao"].description
+    proposal = definitions["criar_proposta_compra"].description
+    assert "WRITE" in proposal
+    assert "ALTERA DADOS" in proposal
+    assert "pedido explícito" in proposal
+    assert "recomendação" in proposal
+
+
+def test_consultar_estoque_accepts_exact_product_name(registry, product):
+    Inventory.objects.create(product=product, current_quantity=17)
+    result = execute(registry, "consultar_estoque", {"name": "CAFE ESPECIAL"})
+    assert result["ok"] is True
+    assert result["data"]["product_id"] == product.pk
+    assert result["data"]["current_quantity"] == 17
+
+
+def test_consultar_estoque_rejects_mixed_or_fabricated_identity(registry, product):
+    mixed = execute(
+        registry,
+        "consultar_estoque",
+        {"name": product.name, "product_id": product.pk},
+    )
+    invented = execute(
+        registry,
+        "consultar_estoque",
+        {"name": product.name, "product_id": "consultar_produto"},
+    )
+    assert mixed["error"]["code"] == "invalid_arguments"
+    assert invented["error"]["code"] == "invalid_arguments"
+
+
+def test_consumption_and_suppliers_accept_product_name(registry, product, relation):
+    consumption = execute(registry, "consultar_consumo", {"name": product.name})
+    suppliers = execute(registry, "consultar_fornecedores", {"name": product.name})
+    assert consumption["ok"] is True
+    assert consumption["data"]["product_id"] == product.pk
+    assert suppliers["ok"] is True
+    assert suppliers["data"]["suppliers"][0]["product_supplier_id"] == relation.pk
+
+
+def test_replenishment_analysis_by_name_uses_preferred_relation_without_write(
+    registry, product, relation
+):
+    other_supplier = Supplier.objects.create(name="Outro fornecedor")
+    ProductSupplier.objects.create(
+        product=product,
+        supplier=other_supplier,
+        price=Decimal("9.00"),
+        lead_time_days=2,
+        is_preferred=False,
+    )
+    relation.is_preferred = True
+    relation.save(update_fields=["is_preferred"])
+    Inventory.objects.create(product=product, current_quantity=0)
+    result = execute(registry, "calcular_reposicao", {"name": "CAFE ESPECIAL"})
+    assert result["ok"] is True
+    assert result["data"]["product_supplier_id"] == relation.pk
+    assert result["data"]["current_stock"] == "0"
+    assert result["data"]["stock_coverage_days"] is None
+    assert result["data"]["recommended_quantity"] == "5"
+    assert result["data"]["summary"] == (
+        "Estoque atual: 0 unidades. Risco: CRITICAL. "
+        "Quantidade recomendada para reposição: 5 unidades. "
+        "Conclusão: reposição necessária."
+    )
+    assert PurchaseProposal.objects.count() == 0
+
+
+def test_replenishment_analysis_by_name_rejects_ambiguous_identity(
+    registry, product, relation
+):
+    result = execute(
+        registry,
+        "calcular_reposicao",
+        {"name": product.name, "product_supplier_id": relation.pk},
+    )
+    assert result["error"]["code"] == "invalid_arguments"
+    assert PurchaseProposal.objects.count() == 0
+
+
+def test_numeric_text_limit_is_normalized_before_bounded_query(registry, product):
+    result = execute(
+        registry,
+        "consultar_movimentacoes",
+        {"product_id": product.pk, "limit": "10"},
+    )
+    assert result["ok"] is True
+    assert result["data"]["limit"] == 10

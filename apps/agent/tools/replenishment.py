@@ -19,6 +19,7 @@ from apps.suppliers.models import ProductSupplier
 
 from .base import (
     ExecutableTool,
+    ToolArgumentsError,
     ToolDomainError,
     ToolExecutionContext,
     ToolPermission,
@@ -49,9 +50,9 @@ def _product(product_id: int) -> Product:
 
 def _relation(product_supplier_id: int) -> ProductSupplier:
     try:
-        return ProductSupplier.objects.select_related(
-            "product", "supplier"
-        ).get(pk=product_supplier_id)
+        return ProductSupplier.objects.select_related("product", "supplier").get(
+            pk=product_supplier_id
+        )
     except ProductSupplier.DoesNotExist as exc:
         raise ToolResourceNotFoundError(
             "Product-supplier relationship was not found."
@@ -78,18 +79,37 @@ def _analysis_data(analysis: ReplenishmentAnalysis) -> dict[str, Any]:
 def _domain_message(error: ValidationError) -> str:
     if hasattr(error, "message_dict"):
         return " ".join(
-            message
-            for messages in error.message_dict.values()
-            for message in messages
+            message for messages in error.message_dict.values() for message in messages
         )
     return " ".join(error.messages)
+
+
+def _product_from_identity(arguments: Mapping[str, Any]) -> Product:
+    product_id = arguments.get("product_id")
+    name = arguments.get("name")
+    if (product_id is None) == (name is None):
+        raise ToolArgumentsError("Informe product_id ou name, mas não ambos.")
+    if name is not None:
+        if not name.strip() or len(name) > 255:
+            raise ToolArgumentsError("Informe um nome de produto válido.")
+        try:
+            product = Product.objects.get(name__iexact=name.strip())
+        except Product.DoesNotExist as exc:
+            raise ToolResourceNotFoundError("Product was not found.") from exc
+        except Product.MultipleObjectsReturned as exc:
+            raise ToolDomainError(
+                "Mais de um produto possui esse nome; informe o ID."
+            ) from exc
+    else:
+        product = _product(product_id)
+    return product
 
 
 def consultar_produto(
     arguments: Mapping[str, Any],
     _context: ToolExecutionContext,
 ) -> dict[str, Any]:
-    product = _product(arguments["product_id"])
+    product = _product_from_identity(arguments)
     return {
         "id": product.pk,
         "sku": product.sku,
@@ -103,7 +123,7 @@ def consultar_estoque(
     arguments: Mapping[str, Any],
     _context: ToolExecutionContext,
 ) -> dict[str, Any]:
-    product = _product(arguments["product_id"])
+    product = _product_from_identity(arguments)
     quantity = (
         Inventory.objects.filter(product_id=product.pk)
         .values_list("current_quantity", flat=True)
@@ -123,8 +143,9 @@ def consultar_movimentacoes(
     product = _product(arguments["product_id"])
     limit = arguments["limit"]
     rows = list(
-        StockMovement.objects.filter(product_id=product.pk)
-        .values("id", "type", "quantity", "occurred_at", "note")[:limit]
+        StockMovement.objects.filter(product_id=product.pk).values(
+            "id", "type", "quantity", "occurred_at", "note"
+        )[:limit]
     )
     return {
         "product_id": product.pk,
@@ -138,7 +159,7 @@ def consultar_consumo(
     arguments: Mapping[str, Any],
     _context: ToolExecutionContext,
 ) -> dict[str, Any]:
-    product = _product(arguments["product_id"])
+    product = _product_from_identity(arguments)
     days = arguments["days"]
     average = calculate_average_daily_consumption(product, days)
     return {
@@ -153,7 +174,7 @@ def consultar_fornecedores(
     arguments: Mapping[str, Any],
     _context: ToolExecutionContext,
 ) -> dict[str, Any]:
-    product = _product(arguments["product_id"])
+    product = _product_from_identity(arguments)
     limit = arguments["limit"]
     relations = list(
         ProductSupplier.objects.filter(product_id=product.pk)
@@ -181,13 +202,37 @@ def calcular_reposicao(
     arguments: Mapping[str, Any],
     _context: ToolExecutionContext,
 ) -> dict[str, Any]:
-    relation = _relation(arguments["product_supplier_id"])
+    relation_id = arguments.get("product_supplier_id")
+    name = arguments.get("name")
+    if (relation_id is None) == (name is None):
+        raise ToolArgumentsError("Informe product_supplier_id ou name, mas não ambos.")
+    if name is not None:
+        product = _product_from_identity({"name": name})
+        relation = (
+            ProductSupplier.objects.filter(product=product)
+            .select_related("product", "supplier")
+            .order_by("-is_preferred", "supplier__name", "pk")
+            .first()
+        )
+        if relation is None:
+            raise ToolResourceNotFoundError(
+                "Product-supplier relationship was not found."
+            )
+    else:
+        relation = _relation(relation_id)
     analysis = analyze_replenishment(
         product_supplier=relation,
         consumption_days=arguments["consumption_days"],
         planning_days=arguments["planning_days"],
     )
     data = _analysis_data(analysis)
+    data["summary"] = (
+        f"Estoque atual: {format(analysis.current_stock, 'f')} unidades. "
+        f"Risco: {analysis.risk_level.value}. "
+        f"Quantidade recomendada para reposição: "
+        f"{format(analysis.recommended_quantity, 'f')} unidades. "
+        f"Conclusão: {'reposição necessária' if analysis.recommended_quantity > 0 else 'sem reposição necessária'}."
+    )
     data["product_supplier_id"] = relation.pk
     data["supplier_id"] = relation.supplier_id
     data["supplier_name"] = relation.supplier.name
@@ -217,9 +262,7 @@ def consultar_produtos_em_risco(
         RiskLevel.LOW: 3,
     }
     analyses.sort(key=lambda item: (severity[item.risk_level], item.product.name))
-    risky = [item for item in analyses if item.risk_level is not RiskLevel.LOW][
-        :limit
-    ]
+    risky = [item for item in analyses if item.risk_level is not RiskLevel.LOW][:limit]
     return {
         "limit": limit,
         "products": [
@@ -279,18 +322,30 @@ def _object_schema(
 
 
 PRODUCT_ID = {"type": "integer", "minimum": 1}
+PRODUCT_ID_OR_NAME = {
+    "name": {
+        "type": "string",
+        "description": "Nome exato do produto informado pelo usuário.",
+    },
+    "product_id": {
+        **PRODUCT_ID,
+        "description": "ID numérico conhecido; não use texto nem adivinhe.",
+    },
+}
 RELATION_ID = {"type": "integer", "minimum": 1}
 CONSUMPTION_DAYS = {
     "type": "integer",
     "minimum": 1,
     "maximum": 365,
     "default": DEFAULT_CONSUMPTION_DAYS,
+    "description": "Dias de consumo de 1 a 365. Omita se não informado; padrão 30. Nunca use 0.",
 }
 PLANNING_DAYS = {
     "type": "integer",
     "minimum": 1,
     "maximum": 365,
     "default": DEFAULT_PLANNING_DAYS,
+    "description": "Dias de planejamento de 1 a 365. Omita se não informado; padrão 30. Nunca use 0.",
 }
 
 
@@ -299,25 +354,27 @@ def create_default_tool_registry() -> ToolRegistry:
         [
             ExecutableTool(
                 name="consultar_produto",
-                description="Consulta dados cadastrais de um produto pelo ID.",
-                parameters=_object_schema(
-                    {"product_id": PRODUCT_ID}, ["product_id"]
+                description=(
+                    "READ: localiza produto pelo nome exato ou ID e retorna seu ID. "
+                    "Use para dados cadastrais ou para obter ID quando necessário. Não altera dados."
                 ),
+                parameters=_object_schema(PRODUCT_ID_OR_NAME, []),
                 permission=ToolPermission.READ,
                 handler=consultar_produto,
             ),
             ExecutableTool(
                 name="consultar_estoque",
-                description="Consulta o estoque atual de um produto.",
-                parameters=_object_schema(
-                    {"product_id": PRODUCT_ID}, ["product_id"]
+                description=(
+                    "READ: consulta estoque atual pelo nome exato OU ID numérico do produto. "
+                    "Informe apenas um deles. Não altera dados."
                 ),
+                parameters=_object_schema(PRODUCT_ID_OR_NAME, []),
                 permission=ToolPermission.READ,
                 handler=consultar_estoque,
             ),
             ExecutableTool(
                 name="consultar_movimentacoes",
-                description="Consulta movimentacoes recentes de um produto.",
+                description="READ: consulta movimentações recentes de um produto quando solicitadas. Não altera dados.",
                 parameters=_object_schema(
                     {
                         "product_id": PRODUCT_ID,
@@ -334,21 +391,45 @@ def create_default_tool_registry() -> ToolRegistry:
                 handler=consultar_movimentacoes,
             ),
             ExecutableTool(
-                name="consultar_consumo",
-                description="Calcula o consumo medio diario observado.",
+                name="calcular_reposicao",
+                description=(
+                    "COMPUTE: calcula risco e reposição pelo código determinístico. "
+                    "Se usuário informou nome, envie apenas name; não envie product_supplier_id "
+                    "nem dias não informados. Usa fornecedor preferencial e padrão de 30 dias. "
+                    "Alternativamente use product_supplier_id conhecido. "
+                    "O resultado inclui summary com os números calculados; não cria proposta."
+                ),
                 parameters=_object_schema(
-                    {"product_id": PRODUCT_ID, "days": CONSUMPTION_DAYS},
-                    ["product_id"],
+                    {
+                        "name": PRODUCT_ID_OR_NAME["name"],
+                        "product_supplier_id": {
+                            **RELATION_ID,
+                            "description": "ID de relação obtido de consultar_fornecedores; não adivinhe.",
+                        },
+                        "consumption_days": CONSUMPTION_DAYS,
+                        "planning_days": PLANNING_DAYS,
+                    },
+                    [],
+                ),
+                permission=ToolPermission.COMPUTE,
+                handler=calcular_reposicao,
+            ),
+            ExecutableTool(
+                name="consultar_consumo",
+                description="COMPUTE: somente consumo médio solicitado. NÃO determina necessidade de reposição; para isso use calcular_reposicao. Aceita nome ou ID. Não altera dados.",
+                parameters=_object_schema(
+                    {**PRODUCT_ID_OR_NAME, "days": CONSUMPTION_DAYS},
+                    [],
                 ),
                 permission=ToolPermission.COMPUTE,
                 handler=consultar_consumo,
             ),
             ExecutableTool(
                 name="consultar_fornecedores",
-                description="Consulta fornecedores vinculados a um produto.",
+                description="READ: consulta fornecedores pelo nome ou ID do produto. Retorna product_supplier_id. Não altera dados.",
                 parameters=_object_schema(
                     {
-                        "product_id": PRODUCT_ID,
+                        **PRODUCT_ID_OR_NAME,
                         "limit": {
                             "type": "integer",
                             "minimum": 1,
@@ -356,28 +437,14 @@ def create_default_tool_registry() -> ToolRegistry:
                             "default": DEFAULT_SUPPLIER_LIMIT,
                         },
                     },
-                    ["product_id"],
+                    [],
                 ),
                 permission=ToolPermission.READ,
                 handler=consultar_fornecedores,
             ),
             ExecutableTool(
-                name="calcular_reposicao",
-                description="Calcula reposicao pelo motor deterministico.",
-                parameters=_object_schema(
-                    {
-                        "product_supplier_id": RELATION_ID,
-                        "consumption_days": CONSUMPTION_DAYS,
-                        "planning_days": PLANNING_DAYS,
-                    },
-                    ["product_supplier_id"],
-                ),
-                permission=ToolPermission.COMPUTE,
-                handler=calcular_reposicao,
-            ),
-            ExecutableTool(
                 name="consultar_produtos_em_risco",
-                description="Analisa produtos e lista riscos calculados.",
+                description="COMPUTE: lista riscos de vários produtos quando o usuário pedir visão geral. Não cria proposta.",
                 parameters=_object_schema(
                     {
                         "limit": {
@@ -397,7 +464,7 @@ def create_default_tool_registry() -> ToolRegistry:
             ExecutableTool(
                 name="criar_proposta_compra",
                 description=(
-                    "Cria uma proposta pendente usando analise e preco reais."
+                    "WRITE: ALTERA DADOS e cria uma proposta PENDENTE. Use somente após pedido explícito para criar/preparar proposta. Nunca use para conversa, consulta, análise ou recomendação de compra."
                 ),
                 parameters=_object_schema(
                     {
