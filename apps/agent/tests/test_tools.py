@@ -123,6 +123,7 @@ def test_consultar_estoque_treats_missing_inventory_as_zero(registry, product):
     result = execute(registry, "consultar_estoque", {"product_id": product.pk})
 
     assert result["data"]["current_quantity"] == 0
+    assert result["data"]["summary"] == "Estoque atual: 0 unidades."
     assert not Inventory.objects.filter(product=product).exists()
 
 
@@ -479,3 +480,17 @@ def test_numeric_text_limit_is_normalized_before_bounded_query(registry, product
     )
     assert result["ok"] is True
     assert result["data"]["limit"] == 10
+
+
+def test_identity_tool_schemas_require_a_name_or_numeric_id(registry):
+    definitions = {definition.name: definition for definition in registry.definitions()}
+
+    def required_fields(tool_name):
+        return tuple(
+            branch["required"][0]
+            for branch in definitions[tool_name].parameters["anyOf"]
+        )
+
+    assert required_fields("consultar_estoque") == ("name", "product_id")
+    assert required_fields("calcular_reposicao") == ("name", "product_supplier_id")
+    assert required_fields("consultar_fornecedores") == ("name", "product_id")

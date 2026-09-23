@@ -188,3 +188,71 @@ def test_named_product_analysis_uses_deterministic_tool_without_write(product_re
     assert [
         message.tool_name for message in provider.calls[1].messages if message.tool_name
     ] == ["calcular_reposicao"]
+
+
+def test_preferred_supplier_write_flow_uses_tool_values_and_stays_blocked(
+    product_relation,
+):
+    product, relation = product_relation
+    Inventory.objects.create(product=product, current_quantity=0)
+    provider = FakeLLMProvider(
+        [
+            LLMResponse(
+                tool_calls=(
+                    ToolCall(
+                        id="analysis",
+                        name="calcular_reposicao",
+                        arguments={"name": product.name},
+                    ),
+                )
+            ),
+            LLMResponse(
+                tool_calls=(
+                    ToolCall(
+                        id="suppliers",
+                        name="consultar_fornecedores",
+                        arguments={"name": product.name},
+                    ),
+                )
+            ),
+            LLMResponse(
+                tool_calls=(
+                    ToolCall(
+                        id="write",
+                        name="criar_proposta_compra",
+                        arguments={"product_supplier_id": relation.pk},
+                    ),
+                )
+            ),
+            LLMResponse(
+                content=(
+                    "O cálculo recomendou 5 unidades com o fornecedor preferido, "
+                    "mas o WRITE não foi autorizado."
+                )
+            ),
+        ]
+    )
+
+    answer = ReplenishAgent(
+        provider=provider,
+        tools=create_default_tool_registry(),
+    ).run("Analise o Produto do fluxo e crie uma proposta com o fornecedor preferido.")
+
+    tool_messages = [
+        message
+        for message in provider.calls[-1].messages
+        if message.role.value == "tool"
+    ]
+    results = [json.loads(message.content) for message in tool_messages]
+    assert [message.tool_name for message in tool_messages] == [
+        "calcular_reposicao",
+        "consultar_fornecedores",
+        "criar_proposta_compra",
+    ]
+    assert results[0]["data"]["recommended_quantity"] == "5"
+    assert results[0]["data"]["product_supplier_id"] == relation.pk
+    assert results[1]["data"]["suppliers"][0]["is_preferred"] is True
+    assert results[1]["data"]["suppliers"][0]["product_supplier_id"] == relation.pk
+    assert results[2]["error"]["code"] == "not_authorized"
+    assert "5 unidades" in answer
+    assert PurchaseProposal.objects.count() == 0

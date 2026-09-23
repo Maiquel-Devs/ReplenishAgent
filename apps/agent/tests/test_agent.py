@@ -315,6 +315,11 @@ def test_system_prompt_sets_tool_selection_boundaries():
     assert "WRITE somente" in SYSTEM_PROMPT
     assert "Analisar ou recomendar compra não autoriza criar proposta" in SYSTEM_PROMPT
     assert "aprovação humana" in SYSTEM_PROMPT
+    assert "perguntas sobre suas capacidades" in SYSTEM_PROMPT
+    assert "fonte de verdade" in SYSTEM_PROMPT
+    assert "0 unidades" in SYSTEM_PROMPT
+    assert "fornecedor preferido" in SYSTEM_PROMPT
+    assert "somente um humano pode aprovar ou rejeitar" in SYSTEM_PROMPT
 
 
 def test_write_stays_blocked_without_user_permission_even_when_policy_allows():

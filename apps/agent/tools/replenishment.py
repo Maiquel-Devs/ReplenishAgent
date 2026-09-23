@@ -39,6 +39,13 @@ MAX_RISK_LIMIT = 50
 MAX_RISK_SCAN = 100
 
 
+def _tool_description(description: str) -> str:
+    return (
+        f"{description} Use somente quando a solicitação exigir dados ou cálculo do sistema. "
+        "Nunca use para cumprimento, ajuda, pergunta sobre capacidades ou conversa genérica."
+    )
+
+
 def _product(product_id: int) -> Product:
     try:
         return Product.objects.only(
@@ -133,6 +140,9 @@ def consultar_estoque(
         "product_id": product.pk,
         "sku": product.sku,
         "current_quantity": quantity if quantity is not None else 0,
+        "summary": (
+            f"Estoque atual: {quantity if quantity is not None else 0} unidades."
+        ),
     }
 
 
@@ -312,13 +322,20 @@ def criar_proposta_compra(
 def _object_schema(
     properties: Mapping[str, Any],
     required: list[str],
+    *,
+    require_one_of: tuple[str, ...] = (),
 ) -> dict[str, Any]:
-    return {
+    schema = {
         "type": "object",
         "properties": dict(properties),
         "required": required,
         "additionalProperties": False,
     }
+    if require_one_of:
+        schema["anyOf"] = [
+            {"required": [property_name]} for property_name in require_one_of
+        ]
+    return schema
 
 
 PRODUCT_ID = {"type": "integer", "minimum": 1}
@@ -354,27 +371,37 @@ def create_default_tool_registry() -> ToolRegistry:
         [
             ExecutableTool(
                 name="consultar_produto",
-                description=(
+                description=_tool_description(
                     "READ: localiza produto pelo nome exato ou ID e retorna seu ID. "
                     "Use para dados cadastrais ou para obter ID quando necessário. Não altera dados."
                 ),
-                parameters=_object_schema(PRODUCT_ID_OR_NAME, []),
+                parameters=_object_schema(
+                    PRODUCT_ID_OR_NAME,
+                    [],
+                    require_one_of=("name", "product_id"),
+                ),
                 permission=ToolPermission.READ,
                 handler=consultar_produto,
             ),
             ExecutableTool(
                 name="consultar_estoque",
-                description=(
+                description=_tool_description(
                     "READ: consulta estoque atual pelo nome exato OU ID numérico do produto. "
                     "Informe apenas um deles. Não altera dados."
                 ),
-                parameters=_object_schema(PRODUCT_ID_OR_NAME, []),
+                parameters=_object_schema(
+                    PRODUCT_ID_OR_NAME,
+                    [],
+                    require_one_of=("name", "product_id"),
+                ),
                 permission=ToolPermission.READ,
                 handler=consultar_estoque,
             ),
             ExecutableTool(
                 name="consultar_movimentacoes",
-                description="READ: consulta movimentações recentes de um produto quando solicitadas. Não altera dados.",
+                description=_tool_description(
+                    "READ: consulta movimentações recentes de um produto quando solicitadas. Não altera dados."
+                ),
                 parameters=_object_schema(
                     {
                         "product_id": PRODUCT_ID,
@@ -392,7 +419,7 @@ def create_default_tool_registry() -> ToolRegistry:
             ),
             ExecutableTool(
                 name="calcular_reposicao",
-                description=(
+                description=_tool_description(
                     "COMPUTE: calcula risco e reposição pelo código determinístico. "
                     "Se usuário informou nome, envie apenas name; não envie product_supplier_id "
                     "nem dias não informados. Usa fornecedor preferencial e padrão de 30 dias. "
@@ -410,23 +437,29 @@ def create_default_tool_registry() -> ToolRegistry:
                         "planning_days": PLANNING_DAYS,
                     },
                     [],
+                    require_one_of=("name", "product_supplier_id"),
                 ),
                 permission=ToolPermission.COMPUTE,
                 handler=calcular_reposicao,
             ),
             ExecutableTool(
                 name="consultar_consumo",
-                description="COMPUTE: somente consumo médio solicitado. NÃO determina necessidade de reposição; para isso use calcular_reposicao. Aceita nome ou ID. Não altera dados.",
+                description=_tool_description(
+                    "COMPUTE: somente consumo médio solicitado. NÃO determina necessidade de reposição; para isso use calcular_reposicao. Aceita nome ou ID. Não altera dados."
+                ),
                 parameters=_object_schema(
                     {**PRODUCT_ID_OR_NAME, "days": CONSUMPTION_DAYS},
                     [],
+                    require_one_of=("name", "product_id"),
                 ),
                 permission=ToolPermission.COMPUTE,
                 handler=consultar_consumo,
             ),
             ExecutableTool(
                 name="consultar_fornecedores",
-                description="READ: consulta fornecedores pelo nome ou ID do produto. Retorna product_supplier_id. Não altera dados.",
+                description=_tool_description(
+                    "READ: consulta fornecedores pelo nome ou ID do produto. Retorna product_supplier_id. Não altera dados."
+                ),
                 parameters=_object_schema(
                     {
                         **PRODUCT_ID_OR_NAME,
@@ -438,13 +471,16 @@ def create_default_tool_registry() -> ToolRegistry:
                         },
                     },
                     [],
+                    require_one_of=("name", "product_id"),
                 ),
                 permission=ToolPermission.READ,
                 handler=consultar_fornecedores,
             ),
             ExecutableTool(
                 name="consultar_produtos_em_risco",
-                description="COMPUTE: lista riscos de vários produtos quando o usuário pedir visão geral. Não cria proposta.",
+                description=_tool_description(
+                    "COMPUTE: lista riscos de vários produtos quando o usuário pedir visão geral. Não cria proposta."
+                ),
                 parameters=_object_schema(
                     {
                         "limit": {
@@ -463,7 +499,7 @@ def create_default_tool_registry() -> ToolRegistry:
             ),
             ExecutableTool(
                 name="criar_proposta_compra",
-                description=(
+                description=_tool_description(
                     "WRITE: ALTERA DADOS e cria uma proposta PENDENTE. Use somente após pedido explícito para criar/preparar proposta. Nunca use para conversa, consulta, análise ou recomendação de compra."
                 ),
                 parameters=_object_schema(

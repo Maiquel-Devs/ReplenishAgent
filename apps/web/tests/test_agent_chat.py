@@ -188,3 +188,42 @@ def test_agent_post_enforces_csrf(agent_user):
     response = csrf_client.post(reverse("web:agent_chat"), {"message": "Sem token"})
     assert response.status_code == 403
     assert AgentExecution.objects.count() == 0
+
+
+def test_display_history_is_not_sent_to_provider(
+    client,
+    agent_user,
+    monkeypatch,
+):
+    configured_ollama()
+    captured = []
+
+    def generate(self, messages, tools):
+        captured.append(messages)
+        return LLMResponse(content="Resposta nova")
+
+    monkeypatch.setattr(OllamaProvider, "generate", generate)
+    client.force_login(agent_user)
+    session = client.session
+    session["agent_conversation"] = [
+        {"role": "user", "content": "Produto antigo da sessão"},
+        {"role": "assistant", "content": "Resposta antiga da sessão"},
+    ]
+    session.save()
+
+    response = client.post(
+        reverse("web:agent_chat"),
+        {"message": "Pergunta genérica nova"},
+    )
+
+    assert response.status_code == 302
+    assert len(captured) == 1
+    user_messages = [
+        message.content for message in captured[0] if message.role.value == "user"
+    ]
+    assert user_messages == ["Pergunta genérica nova"]
+    assert all(
+        "Produto antigo da sessão" not in message.content
+        and "Resposta antiga da sessão" not in message.content
+        for message in captured[0]
+    )
