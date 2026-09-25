@@ -10,6 +10,7 @@ from apps.agent.providers import (
     FakeLLMProvider,
     LLMProviderError,
     LLMResponse,
+    MistralProvider,
     OllamaProvider,
     ToolCall,
 )
@@ -30,6 +31,16 @@ def configured_ollama(*, active=True):
         integration="ollama",
         local_endpoint="http://host.docker.internal:11434",
         model="llama3.2:3b",
+        is_active=active,
+    )
+
+
+def configured_mistral(*, active=True):
+    return AIConfiguration.objects.create(
+        type="CLOUD",
+        integration="mistral",
+        local_endpoint="",
+        model="ministral-3b-2512",
         is_active=active,
     )
 
@@ -83,6 +94,31 @@ def test_web_chat_uses_saved_ollama_provider_and_records_audit(
     assert execution.duration_ms is not None
 
 
+def test_web_chat_uses_saved_mistral_provider_and_records_audit(
+    client, agent_user, monkeypatch
+):
+    configured_mistral()
+    monkeypatch.setenv("MISTRAL_API_KEY", "offline-test-credential")
+    seen = []
+
+    def generate(self, messages, tools):
+        seen.append((self.model, messages, tools))
+        return LLMResponse(content="Resposta Cloud")
+
+    monkeypatch.setattr(MistralProvider, "generate", generate)
+    client.force_login(agent_user)
+    response = client.post(reverse("web:agent_chat"), {"message": "Olá"}, follow=True)
+
+    assert response.status_code == 200
+    assert "Resposta Cloud" in response.content.decode()
+    assert len(seen) == 1
+    assert seen[0][0] == "ministral-3b-2512"
+    execution = AgentExecution.objects.get()
+    assert execution.provider == "MistralProvider"
+    assert execution.model == "ministral-3b-2512"
+    assert execution.status == "COMPLETED"
+
+
 def test_explicit_fake_injection_keeps_agent_offline_and_tools_authorized(agent_user):
     call = ToolCall(
         id="blocked-write",
@@ -132,6 +168,27 @@ def test_incomplete_configuration_is_friendly_and_never_uses_fake(
     assert "Traceback" not in html
     assert AgentExecution.objects.count() == 0
     assert client.session.get("agent_conversation", []) == []
+
+
+def test_missing_mistral_credential_is_friendly_without_local_fallback(
+    client, agent_user, monkeypatch
+):
+    configured_mistral()
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    monkeypatch.setattr(
+        OllamaProvider,
+        "generate",
+        lambda *args: pytest.fail("Cloud must not fall back to Ollama"),
+    )
+    client.force_login(agent_user)
+
+    response = client.post(reverse("web:agent_chat"), {"message": "Olá"})
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "configuração da IA está ausente, inativa ou incompleta" in html
+    assert "MISTRAL_API_KEY" not in html
+    assert AgentExecution.objects.count() == 0
 
 
 @pytest.mark.parametrize(

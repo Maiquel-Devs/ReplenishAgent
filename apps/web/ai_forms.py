@@ -39,19 +39,33 @@ class AIConfigurationForm(BootstrapFormMixin, forms.ModelForm):
         return self.cleaned_data["model"].strip()
 
 
-class OllamaConnectionForm(forms.Form):
+class AIConnectionForm(forms.Form):
     type = forms.ChoiceField(choices=AIConfiguration.Type.choices)
     integration = forms.ChoiceField(choices=AIConfiguration.Integration.choices)
     local_endpoint = forms.CharField(max_length=500, required=False)
+    model = forms.CharField(max_length=255, required=False)
 
     def clean(self):
         cleaned_data = super().clean()
-        if (
+        selected = (
             cleaned_data.get("type"),
             cleaned_data.get("integration"),
-        ) != (AIConfiguration.Type.LOCAL, AIConfiguration.Integration.OLLAMA):
-            raise forms.ValidationError("Teste disponível somente para Local / Ollama.")
-        cleaned_data["local_endpoint"] = normalize_local_endpoint(
-            cleaned_data.get("local_endpoint", "")
         )
+        if selected == (AIConfiguration.Type.LOCAL, AIConfiguration.Integration.OLLAMA):
+            cleaned_data["local_endpoint"] = normalize_local_endpoint(
+                cleaned_data.get("local_endpoint", "")
+            )
+        elif selected == (
+            AIConfiguration.Type.CLOUD,
+            AIConfiguration.Integration.MISTRAL,
+        ):
+            model = cleaned_data.get("model", "").strip()
+            if not model:
+                self.add_error("model", "Informe o modelo Mistral.")
+            elif any(character.isspace() or ord(character) < 32 for character in model):
+                self.add_error("model", "Informe um identificador de modelo válido.")
+            cleaned_data["model"] = model
+            cleaned_data["local_endpoint"] = ""
+        else:
+            raise forms.ValidationError("Combinação de IA inválida.")
         return cleaned_data

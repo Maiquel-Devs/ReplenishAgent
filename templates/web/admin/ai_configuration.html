@@ -30,7 +30,7 @@
           {{ form.integration }}
           {% for error in form.integration.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
         </div>
-        <div class="col-12" id="local-endpoint-fields">
+        <div class="col-12" id="local-endpoint-fields"{% if form.type.value != "LOCAL" %} hidden{% endif %}>
           <label class="form-label" for="{{ form.local_endpoint.id_for_label }}">{{ form.local_endpoint.label }}</label>
           {{ form.local_endpoint }}
           <div class="form-text">Informe somente a origem do runtime. Aceitos localhost, host.docker.internal ou IP privado.</div>
@@ -45,7 +45,7 @@
             </datalist>
             <div class="form-text">Escolha um modelo encontrado ou mantenha o identificador informado manualmente.</div>
           {% else %}
-            <div class="form-text">Identificador informado manualmente. Testar conexão consulta os modelos instalados sem executar inferência.</div>
+            <div class="form-text">Identificador informado manualmente. O teste de conexão não executa inferência.</div>
           {% endif %}
           {% for error in form.model.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
         </div>
@@ -61,18 +61,18 @@
       <div class="alert alert-light border mb-4" data-integration-note="cloud">
         <strong>Credencial Mistral:</strong>
         {% if credential_configured %}configurada pelo ambiente{% else %}não configurada{% endif %}.
-        A chave não é recebida nem exibida nesta página.
+        A chave não é recebida nem exibida nesta página. O teste consulta somente o catálogo de modelos da Mistral.
       </div>
       {% if probe_result %}
         <div class="alert {% if probe_result.ok %}alert-success{% else %}alert-danger{% endif %}" role="{% if probe_result.ok %}status{% else %}alert{% endif %}">
           {{ probe_result.message }}
         </div>
       {% endif %}
-      {% if probe_result.ok and not available_models %}
+      {% if probe_result.empty_ollama %}
         <p class="text-secondary">Nenhum modelo instalado foi informado pelo Ollama.</p>
       {% endif %}
       <div class="d-flex flex-wrap gap-2">
-        <button class="btn btn-outline-primary" type="submit" name="action" value="test" id="test-ollama-button">Testar conexão</button>
+        <button class="btn btn-outline-primary" type="submit" name="action" value="test" id="test-connection-button">Testar conexão</button>
         <button class="btn btn-primary" type="submit" name="action" value="save">Salvar configuração</button>
       </div>
     </form>
@@ -104,7 +104,6 @@
   const integration = document.getElementById("id_integration");
   const endpoint = document.getElementById("id_local_endpoint");
   const endpointFields = document.getElementById("local-endpoint-fields");
-  const testButton = document.getElementById("test-ollama-button");
   const model = document.getElementById("id_model");
   const label = document.getElementById("integration-label");
   if (!type || !integration || !label || !endpoint) return;
@@ -120,7 +119,6 @@
     if (integration.value !== allowed) integration.value = allowed;
     endpointFields.hidden = !local;
     endpoint.disabled = !local;
-    testButton.hidden = !local;
     if (model) {
       if (local && document.getElementById("ollama-models")) model.setAttribute("list", "ollama-models");
       else model.removeAttribute("list");

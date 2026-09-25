@@ -4,7 +4,9 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
+from mistralai.client.errors import SDKError
 
+from apps.agent.core import ReplenishAgent
 from apps.agent.providers import (
     LLMMessage,
     LLMProviderError,
@@ -15,6 +17,7 @@ from apps.agent.providers import (
     ToolDefinition,
     create_llm_provider,
 )
+from apps.agent.tools import ExecutableTool, ToolPermission, ToolRegistry
 
 
 def tool_definition():
@@ -50,17 +53,38 @@ def mistral_response(*, content=None, tool_calls=None):
 
 
 class FakeMistralClient:
-    def __init__(self, response=None, error=None):
+    def __init__(
+        self,
+        response=None,
+        error=None,
+        *,
+        responses=None,
+        models_response=None,
+        models_error=None,
+    ):
         self.response = response
+        self.responses = list(responses) if responses is not None else None
         self.error = error
+        self.models_response = models_response
+        self.models_error = models_error
         self.requests = []
+        self.model_requests = 0
         self.chat = SimpleNamespace(complete=self.complete)
+        self.models = SimpleNamespace(list=self.list_models)
 
     def complete(self, **kwargs):
         self.requests.append(kwargs)
         if self.error:
             raise self.error
+        if self.responses is not None:
+            return self.responses.pop(0)
         return self.response
+
+    def list_models(self):
+        self.model_requests += 1
+        if self.models_error:
+            raise self.models_error
+        return self.models_response
 
 
 def test_ollama_sends_messages_model_url_timeout_and_disables_streaming():
@@ -387,17 +411,40 @@ def test_mistral_sends_messages_tools_and_configured_model():
     )
 
     response = provider.generate(
-        [LLMMessage(role="user", content="Check.")], [tool_definition()]
+        [
+            LLMMessage(role="system", content="Use tools when needed."),
+            LLMMessage(role="user", content="Check."),
+        ],
+        [tool_definition()],
     )
 
     request = client.requests[0]
     assert request["model"] == "mistral-configured"
-    assert request["messages"] == [{"role": "user", "content": "Check."}]
+    assert request["messages"] == [
+        {"role": "system", "content": "Use tools when needed."},
+        {"role": "user", "content": "Check."},
+    ]
+    assert request["stream"] is False
     assert request["tools"][0]["function"]["name"] == "check_inventory"
     assert response.content == "Ready."
 
 
-def test_mistral_normalizes_one_and_multiple_calls_preserving_ids():
+def test_mistral_normalizes_one_call_preserving_id_and_arguments():
+    raw_call = SimpleNamespace(
+        id="call-A",
+        function=SimpleNamespace(name="first", arguments='{"product_id": 1}'),
+    )
+    client = FakeMistralClient(mistral_response(tool_calls=[raw_call]))
+    provider = MistralProvider(api_key="test-key", model="model", client=client)
+
+    response = provider.generate([LLMMessage(role="user", content="Check.")])
+
+    assert response.tool_calls == (
+        ToolCall(id="call-A", name="first", arguments={"product_id": 1}),
+    )
+
+
+def test_mistral_normalizes_multiple_calls_preserving_ids_and_order():
     raw_calls = [
         SimpleNamespace(
             id="call-A",
@@ -416,6 +463,50 @@ def test_mistral_normalizes_one_and_multiple_calls_preserving_ids():
     assert [call.id for call in response.tool_calls] == ["call-A", "call-B"]
     assert response.tool_calls[0].arguments["product_id"] == 1
     assert response.tool_calls[1].arguments["product_id"] == 2
+
+
+def test_mistral_completes_agent_loop_after_tool_result():
+    raw_call = SimpleNamespace(
+        id="call-stock",
+        function=SimpleNamespace(
+            name="check_inventory",
+            arguments='{"product_id": 7}',
+        ),
+    )
+    client = FakeMistralClient(
+        responses=[
+            mistral_response(tool_calls=[raw_call]),
+            mistral_response(content="There are 12 units."),
+        ]
+    )
+    provider = MistralProvider(api_key="test-key", model="model", client=client)
+    tool = ExecutableTool(
+        name="check_inventory",
+        description="Check inventory.",
+        parameters={
+            "type": "object",
+            "properties": {"product_id": {"type": "integer"}},
+            "required": ["product_id"],
+            "additionalProperties": False,
+        },
+        permission=ToolPermission.READ,
+        handler=lambda arguments, context: {"stock": 12},
+    )
+
+    answer = ReplenishAgent(
+        provider=provider,
+        tools=ToolRegistry([tool]),
+    ).run("Check product 7.")
+
+    assert answer == "There are 12 units."
+    second_messages = client.requests[1]["messages"]
+    assert second_messages[2]["tool_calls"][0]["id"] == "call-stock"
+    assert second_messages[3] == {
+        "role": "tool",
+        "content": '{"ok":true,"data":{"stock":12}}',
+        "tool_call_id": "call-stock",
+        "name": "check_inventory",
+    }
 
 
 def test_mistral_converts_assistant_calls_and_tool_result_metadata():
@@ -479,9 +570,69 @@ def test_mistral_maps_sdk_errors_without_exposing_secrets():
     assert "api-key-secret" not in str(raised.value)
 
 
+def test_mistral_maps_authentication_timeout_and_http_errors():
+    request = httpx.Request("POST", "https://api.mistral.ai/v1/chat/completions")
+    cases = [
+        (
+            SDKError(
+                "request failed",
+                httpx.Response(401, request=request, json={"detail": "secret"}),
+            ),
+            "authentication failed",
+        ),
+        (httpx.ReadTimeout("slow", request=request), "timed out"),
+        (
+            SDKError(
+                "request failed",
+                httpx.Response(503, request=request, json={"detail": "secret"}),
+            ),
+            "HTTP 503",
+        ),
+    ]
+
+    for error, message in cases:
+        provider = MistralProvider(
+            api_key="test-key",
+            model="model",
+            client=FakeMistralClient(error=error),
+        )
+        with pytest.raises(LLMProviderError, match=message) as raised:
+            provider.generate([LLMMessage(role="user", content="Hello")])
+        assert "secret" not in str(raised.value)
+
+
+def test_mistral_lists_available_models_without_chat_completion():
+    client = FakeMistralClient(
+        models_response=SimpleNamespace(
+            data=[
+                SimpleNamespace(
+                    id="ministral-3b-2512",
+                    aliases=["ministral-3b-latest"],
+                ),
+                SimpleNamespace(id="mistral-small-2603", aliases=[]),
+            ]
+        )
+    )
+
+    models = MistralProvider.list_models(api_key="test-key", client=client)
+
+    assert models == (
+        "ministral-3b-2512",
+        "ministral-3b-latest",
+        "mistral-small-2603",
+    )
+    assert client.model_requests == 1
+    assert client.requests == []
+
+
 def test_mistral_requires_api_key_only_when_constructed():
     with pytest.raises(ValueError, match="API key is required"):
         MistralProvider(api_key="", model="model")
+
+
+def test_mistral_rejects_invalid_timeout():
+    with pytest.raises(ValueError, match="timeout"):
+        MistralProvider(api_key="key", model="model", timeout=0)
 
 
 def test_factory_builds_explicit_ollama_with_environment_endpoint(monkeypatch):
@@ -508,6 +659,7 @@ def test_factory_builds_mistral_and_keeps_model_separate(monkeypatch):
 
     assert isinstance(provider, MistralProvider)
     assert provider.model == "explicit-model"
+    assert provider.timeout == 30
 
 
 def test_factory_rejects_unknown_provider():

@@ -4,7 +4,9 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
+import httpx
 from mistralai.client import Mistral
+from mistralai.client.errors import NoResponseError, ResponseValidationError, SDKError
 
 from ._conversion import field, mutable_json, parse_arguments, tool_definition_payload
 from .base import (
@@ -26,14 +28,59 @@ class MistralProvider(LLMProvider):
         *,
         api_key: str,
         model: str,
+        timeout: float = 30.0,
         client: Any | None = None,
     ) -> None:
         if not isinstance(api_key, str) or not api_key.strip():
             raise ValueError("Mistral API key is required.")
         if not isinstance(model, str) or not model.strip():
             raise ValueError("Mistral model must be a non-empty string.")
+        if not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ValueError("Mistral timeout must be a positive number.")
         self.model = model
-        self._client = client or Mistral(api_key=api_key)
+        self.timeout = float(timeout)
+        self._client = client or Mistral(
+            api_key=api_key,
+            timeout_ms=int(self.timeout * 1000),
+        )
+
+    @staticmethod
+    def list_models(
+        *,
+        api_key: str,
+        timeout: float = 30.0,
+        client: Any | None = None,
+    ) -> tuple[str, ...]:
+        """List model IDs and aliases without running inference."""
+        if not isinstance(api_key, str) or not api_key.strip():
+            raise ValueError("Mistral API key is required.")
+        if not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ValueError("Mistral timeout must be a positive number.")
+
+        if client is None:
+            with Mistral(
+                api_key=api_key,
+                timeout_ms=int(float(timeout) * 1000),
+            ) as owned_client:
+                response = _mistral_request(owned_client.models.list)
+        else:
+            response = _mistral_request(client.models.list)
+
+        raw_models = field(response, "data")
+        if not isinstance(raw_models, (list, tuple)):
+            raise LLMProviderError("Mistral returned an invalid model list.")
+        names = []
+        for item in raw_models:
+            model_id = field(item, "id")
+            aliases = field(item, "aliases", ()) or ()
+            if not isinstance(model_id, str) or not model_id.strip():
+                raise LLMProviderError("Mistral returned an invalid model list.")
+            if not isinstance(aliases, (list, tuple)) or any(
+                not isinstance(alias, str) or not alias.strip() for alias in aliases
+            ):
+                raise LLMProviderError("Mistral returned an invalid model list.")
+            names.extend((model_id, *aliases))
+        return tuple(dict.fromkeys(names))
 
     def generate(
         self,
@@ -43,13 +90,11 @@ class MistralProvider(LLMProvider):
         request: dict[str, Any] = {
             "model": self.model,
             "messages": [self._message_payload(message) for message in messages],
+            "stream": False,
         }
         if tools:
             request["tools"] = [tool_definition_payload(tool) for tool in tools]
-        try:
-            response = self._client.chat.complete(**request)
-        except Exception as exc:
-            raise LLMProviderError("Mistral request failed.") from exc
+        response = _mistral_request(lambda: self._client.chat.complete(**request))
         return self._normalize_response(response)
 
     @staticmethod
@@ -112,3 +157,21 @@ class MistralProvider(LLMProvider):
         if content is None and not calls:
             raise LLMProviderError("Mistral returned an empty response.")
         return LLMResponse(content=content, tool_calls=tuple(calls))
+
+
+def _mistral_request(operation):
+    try:
+        return operation()
+    except httpx.TimeoutException as exc:
+        raise LLMProviderError("Mistral request timed out.") from exc
+    except ResponseValidationError as exc:
+        raise LLMProviderError("Mistral returned an invalid response.") from exc
+    except SDKError as exc:
+        status_code = exc.raw_response.status_code
+        if status_code in (401, 403):
+            raise LLMProviderError("Mistral authentication failed.") from exc
+        raise LLMProviderError(f"Mistral returned HTTP {status_code}.") from exc
+    except NoResponseError as exc:
+        raise LLMProviderError("Mistral is unavailable.") from exc
+    except Exception as exc:
+        raise LLMProviderError("Mistral request failed.") from exc

@@ -9,6 +9,7 @@ from django.db import transaction
 
 from .local_endpoint import normalize_local_endpoint
 from .models import AIConfiguration, AIConfigurationChange
+from .providers.mistral import MistralProvider
 from .providers.ollama import OllamaProvider
 
 
@@ -68,3 +69,19 @@ def configuration_status(configuration: AIConfiguration | None) -> str:
 def discover_ollama_models(endpoint: str, *, client=None) -> tuple[str, ...]:
     normalized_endpoint = normalize_local_endpoint(endpoint)
     return OllamaProvider.list_models(base_url=normalized_endpoint, client=client)
+
+
+def discover_mistral_models(*, client=None) -> tuple[str, ...]:
+    api_key = os.environ.get("MISTRAL_API_KEY", "")
+    if not api_key.strip():
+        raise AIConfigurationError("MISTRAL_API_KEY is not configured.")
+    raw_timeout = os.environ.get("MISTRAL_TIMEOUT", "30")
+    try:
+        timeout = float(raw_timeout)
+    except ValueError as exc:
+        raise AIConfigurationError("MISTRAL_TIMEOUT must be a number.") from exc
+    return MistralProvider.list_models(
+        api_key=api_key,
+        timeout=timeout,
+        client=client,
+    )

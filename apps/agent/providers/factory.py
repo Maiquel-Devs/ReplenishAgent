@@ -58,6 +58,16 @@ def create_llm_provider(
         api_key = overrides.pop("api_key", os.environ.get("MISTRAL_API_KEY", ""))
         if not api_key.strip():
             raise AIConfigurationError("MISTRAL_API_KEY is not configured.")
-        return MistralProvider(api_key=api_key, model=model, **overrides)
+        raw_timeout = overrides.pop("timeout", os.environ.get("MISTRAL_TIMEOUT", "30"))
+        try:
+            timeout = float(raw_timeout)
+        except (TypeError, ValueError) as exc:
+            raise AIConfigurationError("MISTRAL_TIMEOUT must be a number.") from exc
+        return MistralProvider(
+            api_key=api_key,
+            model=model,
+            timeout=timeout,
+            **overrides,
+        )
 
     raise AIConfigurationError(f"Unknown LLM provider: {provider_name!r}.")

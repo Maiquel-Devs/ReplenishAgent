@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -8,6 +9,7 @@ from django.db import IntegrityError, transaction
 from apps.agent.configuration import (
     AIConfigurationError,
     configuration_status,
+    discover_mistral_models,
     save_ai_configuration,
 )
 from apps.agent.models import AIConfiguration, AIConfigurationChange
@@ -130,6 +132,63 @@ def test_factory_reports_missing_credential_and_invalid_endpoint(monkeypatch):
     monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
     with pytest.raises(AIConfigurationError, match="MISTRAL_API_KEY"):
         create_llm_provider(client=Mock())
+
+
+def test_factory_never_falls_back_between_cloud_and_local(monkeypatch):
+    config(type="CLOUD", integration="mistral", model="mistral-configured")
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    ollama = Mock()
+    monkeypatch.setattr("apps.agent.providers.factory.OllamaProvider", ollama)
+
+    with pytest.raises(AIConfigurationError, match="MISTRAL_API_KEY"):
+        create_llm_provider(client=Mock())
+
+    ollama.assert_not_called()
+
+    AIConfiguration.objects.update(
+        type="LOCAL",
+        integration="ollama",
+        model="llama3.2:3b",
+        local_endpoint="",
+    )
+    mistral = Mock()
+    monkeypatch.setattr("apps.agent.providers.factory.MistralProvider", mistral)
+
+    with pytest.raises(AIConfigurationError, match="invalid"):
+        create_llm_provider(client=Mock())
+
+    mistral.assert_not_called()
+
+
+def test_factory_rejects_invalid_mistral_timeout(monkeypatch):
+    config(type="CLOUD", integration="mistral", model="mistral-configured")
+    monkeypatch.setenv("MISTRAL_API_KEY", "offline-test-credential")
+    monkeypatch.setenv("MISTRAL_TIMEOUT", "not-a-number")
+
+    with pytest.raises(AIConfigurationError, match="MISTRAL_TIMEOUT"):
+        create_llm_provider(client=Mock())
+
+
+def test_mistral_discovery_uses_environment_credential_without_inference(monkeypatch):
+    monkeypatch.setenv("MISTRAL_API_KEY", "offline-test-credential")
+    client = Mock()
+    client.models.list.return_value = SimpleNamespace(
+        data=[SimpleNamespace(id="ministral-3b-2512", aliases=[])]
+    )
+
+    assert discover_mistral_models(client=client) == ("ministral-3b-2512",)
+    client.models.list.assert_called_once_with()
+    client.chat.complete.assert_not_called()
+
+
+def test_mistral_discovery_requires_environment_credential(monkeypatch):
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    client = Mock()
+
+    with pytest.raises(AIConfigurationError, match="MISTRAL_API_KEY"):
+        discover_mistral_models(client=client)
+
+    client.models.list.assert_not_called()
 
 
 def test_local_requires_endpoint_and_cloud_rejects_it():

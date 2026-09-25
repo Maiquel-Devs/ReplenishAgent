@@ -138,6 +138,8 @@ def test_credential_value_never_appears_in_html_or_change_record(
     assert "synthetic-test-value" not in html
     assert "synthetic-test-value" not in repr(event)
     assert 'name="api_key"' not in html
+    assert 'id="local-endpoint-fields" hidden' in html
+    assert 'id="test-connection-button"' in html
 
 
 def test_cloud_page_reports_missing_credential_without_external_check(
@@ -287,18 +289,100 @@ def test_discovery_preserves_saved_model_and_endpoint(
     assert AIConfigurationChange.objects.count() == 0
 
 
-def test_cloud_cannot_trigger_ollama_test(client, administrator, monkeypatch):
+def test_cloud_connection_uses_mistral_catalog_without_ollama_or_saving(
+    client, administrator, monkeypatch
+):
     def fail(endpoint):
         raise AssertionError("cloud must not call Ollama")
 
     monkeypatch.setattr("apps.web.admin_views.discover_ollama_models", fail)
+    monkeypatch.setattr(
+        "apps.web.admin_views.discover_mistral_models",
+        lambda: ("ministral-3b-2512",),
+    )
     client.force_login(administrator)
     response = client.post(
         reverse("web:ai_configuration"),
-        payload(action="test", type="CLOUD", integration="mistral"),
+        payload(
+            action="test",
+            type="CLOUD",
+            integration="mistral",
+            model="ministral-3b-2512",
+        ),
     )
     assert response.status_code == 200
-    assert "Local / Ollama" in response.content.decode()
+    assert "Mistral conectada. Modelo disponível." in response.content.decode()
+    assert AIConfiguration.objects.count() == 0
+    assert AIConfigurationChange.objects.count() == 0
+
+
+def test_cloud_connection_requires_environment_credential_without_network(
+    client, administrator, monkeypatch
+):
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    client.force_login(administrator)
+
+    response = client.post(
+        reverse("web:ai_configuration"),
+        payload(
+            action="test",
+            type="CLOUD",
+            integration="mistral",
+            model="ministral-3b-2512",
+        ),
+    )
+
+    assert response.status_code == 200
+    assert "Credencial Mistral não configurada no ambiente." in response.content.decode()
+    assert AIConfiguration.objects.count() == 0
+
+
+def test_cloud_connection_failure_is_sanitized(client, administrator, monkeypatch):
+    from apps.agent.providers.base import LLMProviderError
+
+    def fail():
+        raise LLMProviderError("Authorization: Bearer secret")
+
+    monkeypatch.setattr("apps.web.admin_views.discover_mistral_models", fail)
+    client.force_login(administrator)
+    response = client.post(
+        reverse("web:ai_configuration"),
+        payload(
+            action="test",
+            type="CLOUD",
+            integration="mistral",
+            model="ministral-3b-2512",
+        ),
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Não foi possível conectar à Mistral" in html
+    assert "Bearer secret" not in html
+    assert "Traceback" not in html
+    assert AIConfiguration.objects.count() == 0
+
+
+def test_cloud_connection_reports_unavailable_model(
+    client, administrator, monkeypatch
+):
+    monkeypatch.setattr(
+        "apps.web.admin_views.discover_mistral_models",
+        lambda: ("mistral-small-2603",),
+    )
+    client.force_login(administrator)
+    response = client.post(
+        reverse("web:ai_configuration"),
+        payload(
+            action="test",
+            type="CLOUD",
+            integration="mistral",
+            model="ministral-3b-2512",
+        ),
+    )
+
+    assert response.status_code == 200
+    assert "modelo informado não está disponível" in response.content.decode()
     assert AIConfiguration.objects.count() == 0
 
 

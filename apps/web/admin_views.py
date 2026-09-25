@@ -15,12 +15,19 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from apps.agent.audit import ToolExecutionStatus
 from apps.agent.configuration import (
+    AIConfigurationError,
     configuration_status,
+    discover_mistral_models,
     discover_ollama_models,
     current_ai_configuration,
     save_ai_configuration,
 )
-from apps.agent.models import AIConfigurationChange, AgentExecution, AgentToolExecution
+from apps.agent.models import (
+    AIConfiguration,
+    AIConfigurationChange,
+    AgentExecution,
+    AgentToolExecution,
+)
 from apps.agent.providers.base import LLMProviderError
 from apps.purchasing.models import PurchaseProposal
 from apps.purchasing.services import (
@@ -35,7 +42,7 @@ from .authorization import (
     administration_required,
     permission_required,
 )
-from .ai_forms import AIConfigurationForm, OllamaConnectionForm
+from .ai_forms import AIConfigurationForm, AIConnectionForm
 from .views import _domain_error_message
 
 
@@ -69,26 +76,60 @@ def ai_configuration(request: HttpRequest) -> HttpResponse:
                 messages.success(request, "Configuração da IA salva.")
                 return redirect("web:ai_configuration")
         elif action == "test":
-            probe_form = OllamaConnectionForm(request.POST)
+            probe_form = AIConnectionForm(request.POST)
             if probe_form.is_valid():
-                try:
-                    available_models = discover_ollama_models(
-                        probe_form.cleaned_data["local_endpoint"]
-                    )
-                except LLMProviderError:
-                    probe_result = {
-                        "ok": False,
-                        "message": "Não foi possível conectar ao Ollama ou consultar os modelos.",
-                    }
+                selected = (
+                    probe_form.cleaned_data["type"],
+                    probe_form.cleaned_data["integration"],
+                )
+                if selected == (
+                    AIConfiguration.Type.LOCAL,
+                    AIConfiguration.Integration.OLLAMA,
+                ):
+                    try:
+                        available_models = discover_ollama_models(
+                            probe_form.cleaned_data["local_endpoint"]
+                        )
+                    except LLMProviderError:
+                        probe_result = {
+                            "ok": False,
+                            "message": "Não foi possível conectar ao Ollama ou consultar os modelos.",
+                        }
+                    else:
+                        count = len(available_models)
+                        model_label = (
+                            "modelo disponível" if count == 1 else "modelos disponíveis"
+                        )
+                        probe_result = {
+                            "ok": True,
+                            "message": f"Ollama conectado. {count} {model_label}.",
+                            "empty_ollama": count == 0,
+                        }
                 else:
-                    count = len(available_models)
-                    model_label = (
-                        "modelo disponível" if count == 1 else "modelos disponíveis"
-                    )
-                    probe_result = {
-                        "ok": True,
-                        "message": f"Ollama conectado. {count} {model_label}.",
-                    }
+                    try:
+                        cloud_models = discover_mistral_models()
+                    except AIConfigurationError:
+                        probe_result = {
+                            "ok": False,
+                            "message": "Credencial Mistral não configurada no ambiente.",
+                        }
+                    except LLMProviderError:
+                        probe_result = {
+                            "ok": False,
+                            "message": "Não foi possível conectar à Mistral. Verifique a credencial e tente novamente.",
+                        }
+                    else:
+                        model = probe_form.cleaned_data["model"]
+                        if model not in cloud_models:
+                            probe_result = {
+                                "ok": False,
+                                "message": "Mistral conectada, mas o modelo informado não está disponível para esta credencial.",
+                            }
+                        else:
+                            probe_result = {
+                                "ok": True,
+                                "message": "Mistral conectada. Modelo disponível.",
+                            }
             else:
                 first_error = next(iter(probe_form.errors.values()))[0]
                 probe_result = {"ok": False, "message": first_error}
