@@ -114,7 +114,7 @@ def test_ollama_converts_tool_definition_without_executing_anything():
     }
 
 
-def test_ollama_normalizes_one_structured_tool_call_and_generates_id():
+def test_ollama_preserves_one_structured_tool_call_identity():
     provider = ollama_provider(
         {
             "message": {
@@ -122,7 +122,9 @@ def test_ollama_normalizes_one_structured_tool_call_and_generates_id():
                 "content": "",
                 "tool_calls": [
                     {
+                        "id": "call-stock-42",
                         "function": {
+                            "index": 0,
                             "name": "check_inventory",
                             "arguments": {"product_id": 42},
                         }
@@ -134,20 +136,39 @@ def test_ollama_normalizes_one_structured_tool_call_and_generates_id():
 
     response = provider.generate([LLMMessage(role="user", content="Check.")])
 
-    assert response.tool_calls[0].name == "check_inventory"
-    assert response.tool_calls[0].arguments["product_id"] == 42
-    assert response.tool_calls[0].id.startswith("ollama-")
+    assert response.tool_calls == (
+        ToolCall(
+            id="call-stock-42",
+            index=0,
+            name="check_inventory",
+            arguments={"product_id": 42},
+        ),
+    )
 
 
-def test_ollama_normalizes_multiple_calls_with_unique_internal_ids():
+def test_ollama_preserves_multiple_calls_in_provider_order():
     provider = ollama_provider(
         {
             "message": {
                 "role": "assistant",
                 "content": None,
                 "tool_calls": [
-                    {"function": {"name": "first", "arguments": {"value": 1}}},
-                    {"function": {"name": "second", "arguments": '{"value": 2}'}},
+                    {
+                        "id": "call-first",
+                        "function": {
+                            "index": 3,
+                            "name": "first",
+                            "arguments": {"value": 1},
+                        },
+                    },
+                    {
+                        "id": "call-second",
+                        "function": {
+                            "index": 8,
+                            "name": "second",
+                            "arguments": {"value": 2},
+                        },
+                    },
                 ],
             }
         }
@@ -156,8 +177,107 @@ def test_ollama_normalizes_multiple_calls_with_unique_internal_ids():
     response = provider.generate([LLMMessage(role="user", content="Both.")])
 
     assert [call.name for call in response.tool_calls] == ["first", "second"]
-    assert response.tool_calls[1].arguments["value"] == 2
-    assert response.tool_calls[0].id != response.tool_calls[1].id
+    assert [call.id for call in response.tool_calls] == ["call-first", "call-second"]
+    assert [call.index for call in response.tool_calls] == [3, 8]
+    assert [call.arguments["value"] for call in response.tool_calls] == [1, 2]
+
+
+def test_ollama_preserves_repeated_calls_to_the_same_tool():
+    provider = ollama_provider(
+        {
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call-stock-1",
+                        "function": {
+                            "index": 0,
+                            "name": "check_inventory",
+                            "arguments": {"product_id": 1},
+                        },
+                    },
+                    {
+                        "id": "call-stock-2",
+                        "function": {
+                            "index": 1,
+                            "name": "check_inventory",
+                            "arguments": {"product_id": 2},
+                        },
+                    },
+                ],
+            }
+        }
+    )
+
+    response = provider.generate([LLMMessage(role="user", content="Check both.")])
+
+    assert [call.name for call in response.tool_calls] == [
+        "check_inventory",
+        "check_inventory",
+    ]
+    assert [call.id for call in response.tool_calls] == [
+        "call-stock-1",
+        "call-stock-2",
+    ]
+
+
+def test_ollama_accepts_tool_arguments_as_json_object():
+    provider = ollama_provider(
+        {
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call-object",
+                        "function": {
+                            "name": "check_inventory",
+                            "arguments": {"product_id": 42},
+                        },
+                    }
+                ],
+            }
+        }
+    )
+
+    response = provider.generate([LLMMessage(role="user", content="Check.")])
+
+    assert response.tool_calls[0].arguments == {"product_id": 42}
+
+
+def test_ollama_accepts_tool_arguments_as_valid_json_string():
+    provider = ollama_provider(
+        {
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call-string",
+                        "function": {
+                            "name": "check_inventory",
+                            "arguments": '{"product_id": 42}',
+                        },
+                    }
+                ],
+            }
+        }
+    )
+
+    response = provider.generate([LLMMessage(role="user", content="Check.")])
+
+    assert response.tool_calls[0].arguments == {"product_id": 42}
+
+
+def test_ollama_keeps_tool_like_json_content_as_text():
+    content = (
+        '{"tool_calls":[{"function":{"name":"check_inventory",'
+        '"arguments":{"product_id":42}}}]}'
+    )
+    provider = ollama_provider({"message": {"content": content}})
+
+    response = provider.generate([LLMMessage(role="user", content="Check.")])
+
+    assert response.content == content
+    assert response.tool_calls == ()
 
 
 def test_ollama_converts_assistant_calls_and_tool_result_messages():
@@ -166,7 +286,12 @@ def test_ollama_converts_assistant_calls_and_tool_result_messages():
         {"message": {"role": "assistant", "content": "Done."}},
         capture=captured,
     )
-    call = ToolCall(id="internal-1", name="check_inventory", arguments={"id": 3})
+    call = ToolCall(
+        id="provider-call-1",
+        index=4,
+        name="check_inventory",
+        arguments={"id": 3},
+    )
 
     provider.generate(
         [
@@ -181,7 +306,17 @@ def test_ollama_converts_assistant_calls_and_tool_result_messages():
     )
 
     messages = json.loads(captured[0].content)["messages"]
-    assert messages[0]["tool_calls"][0]["function"]["arguments"] == {"id": 3}
+    assert messages[0]["tool_calls"] == [
+        {
+            "id": "provider-call-1",
+            "type": "function",
+            "function": {
+                "index": 4,
+                "name": "check_inventory",
+                "arguments": {"id": 3},
+            },
+        }
+    ]
     assert messages[1] == {
         "role": "tool",
         "content": '{"stock": 8}',

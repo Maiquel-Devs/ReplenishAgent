@@ -59,6 +59,7 @@ class ToolCall:
     id: str
     name: str
     arguments: Mapping[str, Any]
+    index: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not self.id.strip():
@@ -67,6 +68,12 @@ class ToolCall:
             raise ValueError("Tool call name must be a non-empty string.")
         if not isinstance(self.arguments, Mapping):
             raise TypeError("Tool call arguments must be a mapping.")
+        if self.index is not None and (
+            isinstance(self.index, bool)
+            or not isinstance(self.index, int)
+            or self.index < 0
+        ):
+            raise ValueError("Tool call index must be a non-negative integer or None.")
         object.__setattr__(self, "arguments", _freeze_json(self.arguments))
 
 

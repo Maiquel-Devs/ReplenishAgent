@@ -482,15 +482,19 @@ def test_numeric_text_limit_is_normalized_before_bounded_query(registry, product
     assert result["data"]["limit"] == 10
 
 
-def test_identity_tool_schemas_require_a_name_or_numeric_id(registry):
+def test_identity_tool_schemas_require_exactly_one_name_or_numeric_id(registry):
     definitions = {definition.name: definition for definition in registry.definitions()}
 
     def required_fields(tool_name):
+        parameters = definitions[tool_name].parameters
+        assert "anyOf" not in parameters
         return tuple(
             branch["required"][0]
-            for branch in definitions[tool_name].parameters["anyOf"]
+            for branch in parameters["oneOf"]
         )
 
+    assert required_fields("consultar_produto") == ("name", "product_id")
     assert required_fields("consultar_estoque") == ("name", "product_id")
+    assert required_fields("consultar_consumo") == ("name", "product_id")
     assert required_fields("calcular_reposicao") == ("name", "product_supplier_id")
     assert required_fields("consultar_fornecedores") == ("name", "product_id")

@@ -85,6 +85,16 @@ def test_tool_call_has_normalized_immutable_arguments():
         call.arguments["product_id"] = 99
 
 
+def test_tool_call_preserves_and_validates_provider_index():
+    call = ToolCall(id="call-1", index=0, name="tool", arguments={})
+
+    assert call.index == 0
+    with pytest.raises(ValueError, match="index"):
+        ToolCall(id="call-2", index=-1, name="tool", arguments={})
+    with pytest.raises(ValueError, match="index"):
+        ToolCall(id="call-3", index=True, name="tool", arguments={})
+
+
 def test_tool_call_rejects_non_mapping_arguments():
     with pytest.raises(TypeError, match="arguments must be a mapping"):
         ToolCall(id="call-1", name="tool", arguments='{"value": 1}')

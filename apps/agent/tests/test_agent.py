@@ -274,7 +274,12 @@ def test_agent_stops_at_iteration_limit_without_executing_last_calls():
 
 
 def test_tool_ids_names_and_originating_assistant_message_are_preserved():
-    call = ToolCall(id="provider-call-42", name="lookup", arguments={"value": 5})
+    call = ToolCall(
+        id="provider-call-42",
+        index=7,
+        name="lookup",
+        arguments={"value": 5},
+    )
     _, provider = run_tool_flow(call, ToolRegistry([make_tool()]))
 
     history = provider.calls[1].messages
@@ -282,6 +287,7 @@ def test_tool_ids_names_and_originating_assistant_message_are_preserved():
     result = history[3]
     assert assistant.role.value == "assistant"
     assert assistant.tool_calls == (call,)
+    assert assistant.tool_calls[0].index == 7
     assert result.role.value == "tool"
     assert result.tool_call_id == "provider-call-42"
     assert result.tool_name == "lookup"

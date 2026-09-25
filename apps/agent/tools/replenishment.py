@@ -323,7 +323,7 @@ def _object_schema(
     properties: Mapping[str, Any],
     required: list[str],
     *,
-    require_one_of: tuple[str, ...] = (),
+    require_exactly_one_of: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     schema = {
         "type": "object",
@@ -331,9 +331,9 @@ def _object_schema(
         "required": required,
         "additionalProperties": False,
     }
-    if require_one_of:
-        schema["anyOf"] = [
-            {"required": [property_name]} for property_name in require_one_of
+    if require_exactly_one_of:
+        schema["oneOf"] = [
+            {"required": [property_name]} for property_name in require_exactly_one_of
         ]
     return schema
 
@@ -378,7 +378,7 @@ def create_default_tool_registry() -> ToolRegistry:
                 parameters=_object_schema(
                     PRODUCT_ID_OR_NAME,
                     [],
-                    require_one_of=("name", "product_id"),
+                    require_exactly_one_of=("name", "product_id"),
                 ),
                 permission=ToolPermission.READ,
                 handler=consultar_produto,
@@ -392,7 +392,7 @@ def create_default_tool_registry() -> ToolRegistry:
                 parameters=_object_schema(
                     PRODUCT_ID_OR_NAME,
                     [],
-                    require_one_of=("name", "product_id"),
+                    require_exactly_one_of=("name", "product_id"),
                 ),
                 permission=ToolPermission.READ,
                 handler=consultar_estoque,
@@ -437,7 +437,7 @@ def create_default_tool_registry() -> ToolRegistry:
                         "planning_days": PLANNING_DAYS,
                     },
                     [],
-                    require_one_of=("name", "product_supplier_id"),
+                    require_exactly_one_of=("name", "product_supplier_id"),
                 ),
                 permission=ToolPermission.COMPUTE,
                 handler=calcular_reposicao,
@@ -450,7 +450,7 @@ def create_default_tool_registry() -> ToolRegistry:
                 parameters=_object_schema(
                     {**PRODUCT_ID_OR_NAME, "days": CONSUMPTION_DAYS},
                     [],
-                    require_one_of=("name", "product_id"),
+                    require_exactly_one_of=("name", "product_id"),
                 ),
                 permission=ToolPermission.COMPUTE,
                 handler=consultar_consumo,
@@ -471,7 +471,7 @@ def create_default_tool_registry() -> ToolRegistry:
                         },
                     },
                     [],
-                    require_one_of=("name", "product_id"),
+                    require_exactly_one_of=("name", "product_id"),
                 ),
                 permission=ToolPermission.READ,
                 handler=consultar_fornecedores,

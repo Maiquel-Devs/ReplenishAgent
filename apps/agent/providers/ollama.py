@@ -132,16 +132,19 @@ class OllamaProvider(LLMProvider):
             "content": message.content,
         }
         if message.tool_calls:
-            payload["tool_calls"] = [
-                {
+            payload["tool_calls"] = []
+            for call in message.tool_calls:
+                raw_call = {
+                    "id": call.id,
                     "type": "function",
                     "function": {
                         "name": call.name,
                         "arguments": mutable_json(call.arguments),
                     },
                 }
-                for call in message.tool_calls
-            ]
+                if call.index is not None:
+                    raw_call["function"]["index"] = call.index
+                payload["tool_calls"].append(raw_call)
         if message.role is LLMRole.TOOL and message.tool_name:
             payload["tool_name"] = message.tool_name
         return payload
@@ -162,16 +165,27 @@ class OllamaProvider(LLMProvider):
             raise LLMProviderError("Ollama returned invalid tool calls.")
         calls = []
         for raw_call in raw_calls:
+            call_id = field(raw_call, "id")
             function = field(raw_call, "function")
             name = field(function, "name")
+            index = field(function, "index")
+            if call_id is None:
+                call_id = f"ollama-{uuid4().hex}"
+            elif not isinstance(call_id, str) or not call_id.strip():
+                raise LLMProviderError("Ollama returned a tool call with an invalid ID.")
             if not isinstance(name, str) or not name.strip():
                 raise LLMProviderError("Ollama returned a tool call without a name.")
+            if index is not None and (
+                isinstance(index, bool) or not isinstance(index, int) or index < 0
+            ):
+                raise LLMProviderError("Ollama returned a tool call with an invalid index.")
             arguments = parse_arguments(field(function, "arguments"), provider="Ollama")
             calls.append(
                 ToolCall(
-                    id=f"ollama-{uuid4().hex}",
+                    id=call_id,
                     name=name,
                     arguments=arguments,
+                    index=index,
                 )
             )
         if content is None and not calls:
